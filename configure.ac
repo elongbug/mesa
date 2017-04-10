@@ -2215,6 +2215,10 @@ for plat in $egl_platforms; do
 		PKG_CHECK_MODULES([ANDROID], [cutils hardware sync])
 		;;
 
+	tizen)
+		PKG_CHECK_MODULES([TIZEN], [tpl-egl libtbm libtdm])
+		;;
+
 	*)
 		AC_MSG_ERROR([EGL platform '$plat' does not exist])
 		;;
@@ -2241,6 +2245,7 @@ AM_CONDITIONAL(HAVE_PLATFORM_WAYLAND, echo "$egl_platforms" | grep -q 'wayland')
 AM_CONDITIONAL(HAVE_EGL_PLATFORM_DRM, echo "$egl_platforms" | grep -q 'drm')
 AM_CONDITIONAL(HAVE_EGL_PLATFORM_SURFACELESS, echo "$egl_platforms" | grep -q 'surfaceless')
 AM_CONDITIONAL(HAVE_EGL_PLATFORM_ANDROID, echo "$egl_platforms" | grep -q 'android')
+AM_CONDITIONAL(HAVE_EGL_PLATFORM_TIZEN, echo "$egl_platforms" | grep -q 'tizen')
 
 AC_SUBST([EGL_NATIVE_PLATFORM])
 AC_SUBST([EGL_CFLAGS])
