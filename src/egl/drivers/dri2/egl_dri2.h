@@ -63,6 +63,14 @@
 
 #endif /* HAVE_ANDROID_PLATFORM */
 
+#ifdef HAVE_TIZEN_PLATFORM
+#include <tpl.h>
+#include <tbm_bufmgr.h>
+#include <tbm_drm_helper.h>
+#include <tbm_surface.h>
+#include <tbm_surface_internal.h>
+#endif /* HAVE_TIZEN_PLATFORM */
+
 #include "eglconfig.h"
 #include "eglcontext.h"
 #include "egldisplay.h"
@@ -217,6 +225,10 @@ struct dri2_egl_display
    const gralloc_module_t *gralloc;
 #endif
 
+#ifdef HAVE_TIZEN_PLATFORM
+   tpl_display_t            *tpl_display;
+#endif
+
    int                       is_render_node;
    int                       is_different_gpu;
 };
@@ -263,6 +275,27 @@ struct dri2_egl_surface
 
 #ifdef HAVE_DRM_PLATFORM
    struct gbm_dri_surface *gbm_surf;
+#endif
+
+#ifdef HAVE_TIZEN_PLATFORM
+   void          *native_win;
+   tpl_surface_t *tpl_surface;
+   tbm_surface_h  tbm_surface;
+   tbm_format     tbm_format;
+   __DRIimage    *dri_image_back;
+   __DRIimage    *dri_image_front;
+
+   /* EGL-owned buffers */
+   __DRIbuffer           *local_buffers[__DRI_BUFFER_COUNT];
+
+   /* Used to record all the tbm_surface created by tpl_surface and their ages.
+    * Usually Tizen uses at most triple buffers in tpl_surface (tbm_surface_queue)
+    * so hardcode the number of color_buffers to 3.
+    */
+   struct {
+      tbm_surface_h tbm_surface;
+      int age;
+   } color_buffers[3], *back;
 #endif
 
 #if defined(HAVE_WAYLAND_PLATFORM) || defined(HAVE_DRM_PLATFORM)
@@ -396,6 +429,9 @@ dri2_initialize_android(_EGLDriver *drv, _EGLDisplay *disp);
 
 EGLBoolean
 dri2_initialize_surfaceless(_EGLDriver *drv, _EGLDisplay *disp);
+
+EGLBoolean
+dri2_initialize_tizen(_EGLDriver *drv, _EGLDisplay *disp);
 
 void
 dri2_flush_drawable_for_swapbuffers(_EGLDisplay *disp, _EGLSurface *draw);

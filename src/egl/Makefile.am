@@ -88,6 +88,13 @@ libEGL_common_la_LIBADD += $(ANDROID_LIBS)
 dri2_backend_FILES += drivers/dri2/platform_android.c
 endif
 
+if HAVE_EGL_PLATFORM_TIZEN
+AM_CFLAGS += -DHAVE_TIZEN_PLATFORM
+AM_CFLAGS += $(TIZEN_CFLAGS)
+libEGL_common_la_LIBADD += $(TIZEN_LIBS)
+dri2_backend_FILES += drivers/dri2/platform_tizen.c
+endif
+
 AM_CFLAGS += \
 	-I$(top_srcdir)/src/loader \
 	-I$(top_srcdir)/src/egl/drivers/dri2 \
