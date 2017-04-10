@@ -1,0 +1,173 @@
+[Tizen Quick guide for Raspberry Pi3 ]
+
+1. How to build RPI3 kernel
+
+  1) Get kernel sources from git repository
+     repo: https://git.tizen.org/cgit/platform/kernel/linux-rpi3
+     branch: tizen
+     command:
+       $ git clone git://git.tizen.org/platform/kernel/linux-rpi3
+       $ cd linux-rpi3
+       $ git checkout remotes/origin/tizen
+
+  2) Setup aarch64 cross compiler like toolchain released from linaro http://releases.linaro.org/components/toolchain/binaries/
+
+  3) Build kernel using build-rpi3-arm64.sh script in kernel source
+     $ ./build-rpi3-arm64.sh
+
+  4) You can make boot.img including kernel/dtb binary and necessary files to boot
+     $ ./scripts/mkbootimg_rpi3.sh
+
+
+2. Making micro sd card to be possible to boot
+
+  This describes how to partition micro sd-card, format each partition of the card and flash vendor binaries and kernel images to the card
+
+  1) Get fusing script
+     You can get ./scripts/sd_fusing_rpi3.sh file from RPI3 kernel source
+     ( review.tizen.org:29418/platform/kernel/linux-rpi3 ) 
+
+  2) Prepare to use fusing script
+     Make the file executable
+     $ chmod u+x sd_fusing_rpi3.sh
+
+     Install the pv tools
+     $ sudo apt-get install pv
+
+  3) Partitioning for Tizen
+     Connect the micro sd to Desktop using Card Reader and check device node
+     $ sudo fdisk -l
+
+     ..........
+     Partition table entries are not in disk order
+     Disk /dev/sdb: 7948 MB, 7948206080 bytes
+     245 heads, 62 sectors/track, 1021 cylinders, total 15523840 sectors
+     Units = sectors of 1 * 512 = 512 bytes
+     Sector size (logical/physical): 512 bytes / 512 bytes
+     I/O size (minimum/optimal): 512 bytes / 512 bytes
+     Disk identifier: 0x00000000
+     Device Boot Start End Blocks Id System
+     /dev/sdb1 * 8192 139263 65536 e W95 FAT16 (LBA)
+     .......
+
+     Run "sd_fusing_rpi3.sh" script with device node
+     (This script does partitioning a given micro sd storage and formats each partition of the storage)
+     $ sudo ./sd_fusing_rpi3.sh -d /dev/sdb --format
+
+     Partition information after finishing sd_fusing_rpi3.sh
+     +---------------+------------+-----------+
+     |     Label     |   device   | size      |
+     +---------------+------------+-----------+
+     |     boot      | /dev/sdb1  | 64MB      |
+     +---------------+------------+-----------+
+     |     rootfs    | /dev/sdb2  | 3072MB    |
+     +---------------+------------+-----------+
+     |  system-data  | /dev/sdb3  | 512MB     |
+     +---------------+------------+-----------+
+     |     extend    | /dev/sdb4  |           |
+     +---------------+------------+-----------+
+     |     user      | /dev/sdb5  | 101MB     |
+     +---------------+------------+-----------+
+     |     module    | /dev/sdb6  | 20MB      |
+     +---------------+------------+-----------+
+     |     ramdisk   | /dev/sdb7  | 8MB       |
+     +---------------+------------+-----------+
+
+  4) Copy boot binaries to first partition of micro sd, which is boot partition.
+
+     [For Platform developers]
+      Please get boot binary tar.gz for rpi3 from download.tizen.org and flash it using sd_fusing_rpi3.sh script
+      http://download.tizen.org/snapshots/tizen/unified/latest/images/standard/common-boot-arm64-rpi3/
+
+     [For Kernel developers]
+      Mount first partition of micro sd
+        $ sudo mount /dev/sdb1 /mnt
+        (The parition, /dev/sdb1, is dependent on your Host PC env.)
+
+      Get boot binaries from kernel/rpi3/boot/ directory
+      (The file names are  bootcode.bin, config.txt, fixup.dat, LICENCE.broadcom and start.elf)
+        Copy all files from boot directory to /mnt, boot partition.
+        $ sudo cp -a boot/* /mnt/
+
+      Copy below kernel image and device tree binaries to /mnt after building kernel source code
+        bcm2710-rpi-3-b.dtb and bcm2837-rpi-3-b.dtb of arch/arm64/boot/dts/broadcom/
+        Image file of  arch/arm64/boot/
+        For kernel build, please refer to build-rpi3-arm64.sh ( review.tizen.org:29418/platform/kernel/linux-rpi3 )
+
+
+3. How to flash platform image for Tizen
+
+  1) If you have not initialized micro sd, please first do [1]
+     Insert the micro sd to Desktop PC using Card Reader and check device node
+     $ sudo fdisk -l
+
+     ..........
+     Partition table entries are not in disk order
+     Disk /dev/sdb: 7948 MB, 7948206080 bytes
+     245 heads, 62 sectors/track, 1021 cylinders, total 15523840 sectors
+     Units = sectors of 1 * 512 = 512 bytes
+     Sector size (logical/physical): 512 bytes / 512 bytes
+     I/O size (minimum/optimal): 512 bytes / 512 bytes
+     Disk identifier: 0x00000000
+     Device Boot Start End Blocks Id System
+     /dev/sdb1 * 8192 139263 65536 e W95 FAT16 (LBA)
+     .......
+
+  2) Flash a platform image to the micro sd card.
+     (you can download lastest tizen tv platform binary from here:
+      - https://download.tizen.org/snapshots/tizen/tv/latest/images/arm-wayland/tv-wayland-armv7l-odroidu3/ )
+
+     $sudo ./sd_fusing_rpi3.sh -d /dev/sdb -b platform.tar.gz
+
+     Above command will flash each image contained in the platform image to corresponding partition of the micro sd card like below.
+
+     +-----------------+------------------------+
+     | Image file name |  Partition table name  |
+     +-----------------+------------------------+
+     | boot.img        |       /dev/sdb1        |
+     +-----------------+------------------------+
+     | rootfs.img      |       /dev/sdb2        |
+     +-----------------+------------------------+
+     | system-data.img |       /dev/sdb3        |
+     +-----------------+------------------------+
+     | user.img        |       /dev/sdb5        |
+     +-----------------+------------------------+
+     | modules.img     |       /dev/sdb6        |
+     +-----------------+------------------------+
+     | ramdisk.img     |       /dev/sdb7        |
+     +-----------------+------------------------+
+
+
+4. Serial Connection
+
+   If you want to read and write serial messages via UART from host, you need USB to TTL cable and should connect it on Raspberry Pi3
+   refer to http://raspberrypi.stackexchange.com/questions/15819/how-to-identify-the-usb-to-serial-wire-mismatched
+
+
+5. SDB connection
+
+   The Smart Development Bridge (SDB) is a device management tool included in the Tizen SDK
+   refer to https://developer.tizen.org/dev-guide/2.4/org.tizen.devtools/html/common_tools/smart_dev_bridge.htm
+
+   1) host setup example
+      $ sudo ifconfig eth0:1 192.168.0.1 up
+
+   2) rpi3 setup example
+      # ifconfig eth0 192.168.0.2 up
+      # route add default gw 192.168.0.1
+
+   3) host sdb connect by ethernet example
+      $ sdb connect 192.168.0.2
+
+   4) check sdb connection
+      $ sdb devices
+
+      sdb devices
+      List of devices attached
+      192.168.0.2:26101		device		xu3
+
+   5) login sdb shell
+      $sdb shell
+
+   6) send data by sdb
+      $sdb push localfile remote_position
