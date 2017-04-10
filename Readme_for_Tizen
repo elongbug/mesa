@@ -1,0 +1,72 @@
+0. Setup build environment for tizen
+
+   1) reference
+      https://source.tizen.org/documentation/developer-guide/getting-started-guide/installing-development-tools?langredirect=1
+      https://source.tizen.org/documentation/developer-guide/getting-started-guide/building-packages-locally-gbs?langredirect=1
+
+   2) build command example
+      $ gbs -c ~/gbs/gbs.conf build -B ~/gbs/GBS-ROOT/tizen_public/ -A armv7l --include-all --keep-packs --no-patch-export
+
+   3) gbs.conf example
+
+   ---------------------------------[gbs.conf]------------------------------------------------
+   [general]
+   profile = profile.tizen
+
+   [profile.tizen]
+   obs = obs.tizen
+   repos = repo.tizen.base, repo.tizen.latest
+
+   [obs.tizen]
+   url = http://build.tizen.org
+
+   [repo.tizen.base]
+   url = https://download.tizen.org/snapshots/tizen/base/latest/repos/arm/packages/
+
+   [repo.tizen.latest]
+   url = https://download.tizen.org/snapshots/tizen/mobile/latest/repos/arm-wayland/packages/
+   ------------------------------------------------------------------------------------------
+
+   4) add tizen package server infos
+     $ sudo vim /etc/apt/sources.list
+      [add below line to the end of file]
+      deb [trusted=yes] http://download.tizen.org/tools/latest-release/Ubuntu_16.04 /
+
+     $ sudo apt-get update
+
+   5) install gbs & mic package (example for ubuntu 16.04)
+     $ sudo apt-get install gbs mic
+
+1. Mesa for Tizen build dependancy package on github
+
+ download below package and build with gbs
+
+ 1) repo: https://github.com/elongbug/tizen-python-mako
+    command:
+       $ git clone https://github.com/elongbug/tizen-python-mako
+       $ cd tizen-python-mako
+       $ gbs -c ~/gbs/gbs.conf build -B ~/gbs/GBS-ROOT/tizen_public/ -A armv7l --include-all --keep-packs --no-patch-export
+
+ * python-mako for tizen is on progressing over tizen repository.
+   ( https://review.tizen.org/git/platform/upstream/python-mako )
+
+2. Mesa runtime dependancy package for rpi3 on tizen
+
+ 1) RPI3 tbm backend ( tbm vc4 backend)
+    repo: git://git.tizen.org/platform/adaptation/broadcom/libtbm-vc4
+    branch: remotes/origin/tizen
+    command:
+       $ git clone git://git.tizen.org/platform/adaptation/broadcom/libtbm-vc4
+       $ cd libtbm-vc4
+       $ git checkout remotes/origin/tizen
+       $ gbs -c ~/gbs/gbs.conf build -B ~/gbs/GBS-ROOT/tizen_public/ -A armv7l --include-all --keep-packs --no-patch-export
+      
+
+ 2) RPI3 tdm backend ( tdm vc4(drm) backend)
+    repo: git://git.tizen.org/platform/adaptation/broadcom/libtdm-vc4
+    branch: remotes/origin/tizen
+    command:
+       $ git clone git://git.tizen.org/platform/adaptation/broadcom/libtdm-vc4
+       $ cd libtdm-vc4
+       $ git checkout remotes/origin/tizen
+       $ gbs -c ~/gbs/gbs.conf build -B ~/gbs/GBS-ROOT/tizen_public/ -A armv7l --include-all --keep-packs --no-patch-export
