@@ -1,0 +1,59 @@
+1. Download rpi3 fusing scrpit
+
+   rpi3 for tizen kernel repository has fusing script
+   ( script file : sd_fusing_rpi3.sh )
+
+       $ git clone git://git.tizen.org/platform/kernel/linux-rpi3
+       $ cd linux-rpi3
+       $ git checkout remotes/origin/tizen
+       $ cd scripts
+
+2. Download and install latest tizen rpi3 kernel.
+
+ $ wget http://download.tizen.org/snapshots/tizen/unified/latest/images/standard/common-boot-arm64-rpi3/tizen-unified_common-boot-arm64-rpi3.tar.gz
+
+ $ sudo ./sd_fusing_rpi3.sh -d /dev/sdb -b tizen-unified_common-boot-arm64-rpi3.tar.gz
+
+3. Download and install latest tizen 3.0 rpi3 binary.
+
+ $ wget https://download.tizen.org/snapshots/tizen/3.0-tv/latest/images/arm-wayland/tv-wayland-armv7l-odroidu3/tizen-3.0-tv_20170411.1_tv-wayland-armv7l-odroidu3.tar.gz
+ $ sudo ./sd_fusing_rpi3.sh -d /dev/sdb -b tizen-3.0-tv_20170411.1_tv-wayland-armv7l-odroidu3.tar.gz
+
+4. build mesa and dependancy pagkages for tizen.
+
+ 1) mesa for tizen
+   repo: git://git.tizen.org/platform/upstream/mesa
+   branch: remotes/origin/devel/libtpl-egl
+   ( [github]  repo:  https://github.com/elongbug/mesa.git
+               branch: remotes/origin/tizen_work )
+
+ 2) libtbm for vc4
+    repo: git://git.tizen.org/platform/adaptation/broadcom/libtbm-vc4
+    branch: remotes/origin/tizen
+   ( [github]  repo: https://github.com/elongbug/libtbm-vc4
+               branch: master )
+
+ 3) libtdm for vc4
+    repo: git://git.tizen.org/platform/adaptation/broadcom/libtdm-vc4
+    branch: remotes/origin/tizen
+
+ 4) libtpl-egl
+    repo: git://git.tizen.org/platform/core/uifw/libtpl-egl
+    branch: remotes/origin/tizen
+    ( [github]  repo:  https://github.com/elongbug/libtpl-egl
+                branch: master )
+
+ 5) libdrm
+    repo: git clone git://git.tizen.org/platform/upstream/libdrm
+    branch: remotes/origin/tizen
+
+
+5. uninstall conflict package and install build package
+
+ 1) uninstall conflict package from rpi3
+
+    # rpm -e libtbm-exynos-1.2.8-32.1.armv7l libtdm-exynos-1.0.8-32.1.armv7l
+    # rm /usr/lib/tdm/libtdm-default.so /usr/lib/bufmgr/libtbm_default.so
+
+ 2) install built packages to rpi3
+    # rpm -Uvh libtbm-vc4-0.0.5-1.armv7l.rpm libtdm-vc4-0.5.0-0.armv7l.rpm libtpl-egl-1.0-0.armv7l.rpm libwayland-egl-1.0-0.armv7l.rpm mesa-17.1.0-0.armv7l.rpm  libdrm-2.4.75-0.armv7l.rpm --force
