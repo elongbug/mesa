@@ -70,7 +70,6 @@ VULKAN_LIB_DEPS = \
 	$(LLVM_LIBS) \
 	$(LIBELF_LIBS) \
 	$(PTHREAD_LIBS) \
-	$(AMDGPU_LIBS) \
 	$(LIBDRM_LIBS) \
 	$(PTHREAD_LIBS) \
 	$(DLOPEN_LIBS) \
@@ -101,6 +100,7 @@ endif
 
 noinst_LTLIBRARIES = libvulkan_common.la
 libvulkan_common_la_SOURCES = $(VULKAN_SOURCES)
+libvulkan_common_la_LIBADD = $(AMDGPU_LIBS)
 
 nodist_EXTRA_libvulkan_radeon_la_SOURCES = dummy.cpp
 libvulkan_radeon_la_SOURCES = $(VULKAN_GEM_FILES)
