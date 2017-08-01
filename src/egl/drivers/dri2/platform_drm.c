@@ -193,14 +193,10 @@ dri2_drm_destroy_surface(_EGLDriver *drv, _EGLDisplay *disp, _EGLSurface *surf)
 
    for (unsigned i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
       if (dri2_surf->color_buffers[i].bo)
-	 gbm_bo_destroy(dri2_surf->color_buffers[i].bo);
+         gbm_bo_destroy(dri2_surf->color_buffers[i].bo);
    }
 
-   for (unsigned i = 0; i < __DRI_BUFFER_COUNT; i++) {
-      if (dri2_surf->dri_buffers[i])
-         dri2_dpy->dri2->releaseBuffer(dri2_dpy->dri_screen,
-                                       dri2_surf->dri_buffers[i]);
-   }
+   dri2_egl_surface_free_local_buffers(dri2_surf);
 
    free(surf);
 
@@ -291,57 +287,40 @@ back_bo_to_dri_buffer(struct dri2_egl_surface *dri2_surf, __DRIbuffer *buffer)
    buffer->flags = 0;
 }
 
-static int
-get_aux_bo(struct dri2_egl_surface *dri2_surf,
-	   unsigned int attachment, unsigned int format, __DRIbuffer *buffer)
-{
-   struct dri2_egl_display *dri2_dpy =
-      dri2_egl_display(dri2_surf->base.Resource.Display);
-   __DRIbuffer *b = dri2_surf->dri_buffers[attachment];
-
-   if (b == NULL) {
-      b = dri2_dpy->dri2->allocateBuffer(dri2_dpy->dri_screen,
-					 attachment, format,
-					 dri2_surf->base.Width,
-					 dri2_surf->base.Height);
-      dri2_surf->dri_buffers[attachment] = b;
-   }
-   if (b == NULL)
-      return -1;
-
-   memcpy(buffer, b, sizeof *buffer);
-
-   return 0;
-}
-
 static __DRIbuffer *
 dri2_drm_get_buffers_with_format(__DRIdrawable *driDrawable,
-			     int *width, int *height,
-			     unsigned int *attachments, int count,
-			     int *out_count, void *loaderPrivate)
+                                 int *width, int *height,
+                                 unsigned int *attachments, int count,
+                                 int *out_count, void *loaderPrivate)
 {
    struct dri2_egl_surface *dri2_surf = loaderPrivate;
    int i, j;
 
    for (i = 0, j = 0; i < 2 * count; i += 2, j++) {
+      __DRIbuffer *local;
+
       assert(attachments[i] < __DRI_BUFFER_COUNT);
       assert(j < ARRAY_SIZE(dri2_surf->buffers));
 
       switch (attachments[i]) {
       case __DRI_BUFFER_BACK_LEFT:
-	 if (get_back_bo(dri2_surf) < 0) {
-	    _eglError(EGL_BAD_ALLOC, "failed to allocate color buffer");
-	    return NULL;
-	 }
+         if (get_back_bo(dri2_surf) < 0) {
+            _eglError(EGL_BAD_ALLOC, "failed to allocate color buffer");
+            return NULL;
+         }
          back_bo_to_dri_buffer(dri2_surf, &dri2_surf->buffers[j]);
-	 break;
+         break;
       default:
-	 if (get_aux_bo(dri2_surf, attachments[i], attachments[i + 1],
-			&dri2_surf->buffers[j]) < 0) {
-	    _eglError(EGL_BAD_ALLOC, "failed to allocate aux buffer");
-	    return NULL;
-	 }
-	 break;
+         local = dri2_egl_surface_alloc_local_buffer(dri2_surf, attachments[i],
+                                                     attachments[i + 1]);
+
+         if (local)
+            dri2_surf->buffers[j] = *local;
+         else {
+            _eglError(EGL_BAD_ALLOC, "failed to allocate local buffer");
+            return NULL;
+         }
+         break;
       }
    }
 
