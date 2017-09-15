@@ -70,6 +70,7 @@ static const struct {
    { _EGL_PLATFORM_ANDROID, "android" },
    { _EGL_PLATFORM_HAIKU, "haiku" },
    { _EGL_PLATFORM_SURFACELESS, "surfaceless" },
+   { _EGL_PLATFORM_TIZEN, "tizen" },
 };
 
 
@@ -92,7 +93,20 @@ _eglGetNativePlatformFromEnv(void)
 
    for (i = 0; i < _EGL_NUM_PLATFORMS; i++) {
       if (strcmp(egl_platforms[i].name, plat_name) == 0) {
+#ifdef HAVE_TIZEN_PLATFORM
+         /* Some widget library (ex. efl) can set EGL_DISPLAY environment
+          * variable as wayland or drm. But when TIZEN platform is enabled,
+          * we should ignore this variable in mesa. Becasue libtpl-egl detects
+          * this enviromnet variable and loads appropriate backend for that.
+          */
+         if ((egl_platforms[i].platform == _EGL_PLATFORM_WAYLAND) ||
+             (egl_platforms[i].platform == _EGL_PLATFORM_DRM))
+            plat = _EGL_PLATFORM_TIZEN;
+         else
+            plat = egl_platforms[i].platform;
+#else
          plat = egl_platforms[i].platform;
+#endif
          break;
       }
    }
@@ -114,6 +128,23 @@ _eglNativePlatformDetectNativeDisplay(void *nativeDisplay)
       void *first_pointer = *(void **) nativeDisplay;
 
       (void) first_pointer; /* silence unused var warning */
+
+#ifdef HAVE_TIZEN_PLATFORM
+      /* Tizen supports various display protocols (tbm / gbm / wayland-egl)
+       * and each implementation is different from mesa's. Because of tizen
+       * specific scanout-buffer management for hardware overlay compositing
+       * and optimization. And also tizen has its own gbm implementation for
+       * tizen specific implementation. (gbm_create_device function pointer
+       * is differ from mesa's implementation.)
+       * Therefore tizen provides libtpl-egl(Tizen Porting Layer for EGL) which
+       * is an abstraction layer for the surface and buffer management on Tizen
+       * platform aimed to implement the EGL porting layer of the OpenGLES driver
+       * over the various display protocols. As the libtpl-egl detects native
+       * display, if mesa send native display to libtpl-egl then it distinguishes
+       * tbm / gbm / wayland-egl native display and loads appropriate backend.
+       */
+      return _EGL_PLATFORM_TIZEN;
+#endif
 
 #ifdef HAVE_WAYLAND_PLATFORM
       /* wl_display is a wl_proxy, which is a wl_object.
@@ -541,3 +572,18 @@ _eglGetSurfacelessDisplay(void *native_display,
    return _eglFindDisplay(_EGL_PLATFORM_SURFACELESS, native_display);
 }
 #endif /* HAVE_SURFACELESS_PLATFORM */
+
+#ifdef HAVE_TIZEN_PLATFORM
+_EGLDisplay*
+_eglGetTizenDisplay(void *native_display,
+                    const EGLint *attrib_list)
+{
+   /* EGL_EXT_platform_wayland recognizes no attributes. */
+   if (attrib_list != NULL && attrib_list[0] != EGL_NONE) {
+      _eglError(EGL_BAD_ATTRIBUTE, "eglGetPlatformDisplay");
+      return NULL;
+   }
+
+   return _eglFindDisplay(_EGL_PLATFORM_TIZEN, native_display);
+}
+#endif /* HAVE_TIZEN_PLATFORM */
