@@ -403,6 +403,19 @@ _eglGetPlatformDisplayCommon(EGLenum platform, void *native_display,
       dpy = _eglGetSurfacelessDisplay(native_display, attrib_list);
       break;
 #endif
+#ifdef HAVE_TIZEN_PLATFORM
+/* Tizen supports various display protocols (tbm / gbm / wayland-egl) and
+ * each implementation is different from mesa's.
+ * (Tizen has its own gbm implementation for tizen specific implementation.)
+ *  Therefore, when Tizen platform is enabled, it has call _eglGetTizenDisplay().
+ */
+    case EGL_PLATFORM_GBM_MESA:
+       dpy = _eglGetTizenDisplay(native_display, attrib_list);
+       break;
+    case EGL_PLATFORM_WAYLAND_EXT:
+       dpy = _eglGetTizenDisplay(native_display, attrib_list);
+       break;
+#endif
    default:
       RETURN_EGL_ERROR(NULL, EGL_BAD_PARAMETER, NULL);
    }
