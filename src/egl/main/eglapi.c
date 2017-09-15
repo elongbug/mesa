@@ -404,6 +404,18 @@ _eglGetPlatformDisplayCommon(EGLenum platform, void *native_display,
       dpy = _eglGetSurfacelessDisplay(native_display, attrib_list);
       break;
 #endif
+#ifdef HAVE_TIZEN_PLATFORM
+#ifndef HAVE_DRM_PLATFORM
+    case EGL_PLATFORM_GBM_MESA:
+       dpy = _eglGetTizenDisplay(native_display, attrib_list);
+       break;
+#endif /* not HAVE_DRM_PLATFORM */
+#ifndef HAVE_WAYLAND_PLATFORM
+    case EGL_PLATFORM_WAYLAND_EXT:
+       dpy = _eglGetTizenDisplay(native_display, attrib_list);
+       break;
+#endif /* not HAVE_WAYLAND_PLATFORM */
+#endif /* HAVE_TIZEN_PLATFORM */
    default:
       RETURN_EGL_ERROR(NULL, EGL_BAD_PARAMETER, NULL);
    }
