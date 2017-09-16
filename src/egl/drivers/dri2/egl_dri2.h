@@ -65,6 +65,14 @@ struct zwp_linux_dmabuf_v1;
 
 #endif /* HAVE_ANDROID_PLATFORM */
 
+#ifdef HAVE_TIZEN_PLATFORM
+#include <tpl.h>
+#include <tbm_bufmgr.h>
+#include <tbm_drm_helper.h>
+#include <tbm_surface.h>
+#include <tbm_surface_internal.h>
+#endif /* HAVE_TIZEN_PLATFORM */
+
 #include "eglconfig.h"
 #include "eglcontext.h"
 #include "egldisplay.h"
@@ -232,6 +240,10 @@ struct dri2_egl_display
    const gralloc_module_t *gralloc;
 #endif
 
+#ifdef HAVE_TIZEN_PLATFORM
+   tpl_display_t            *tpl_display;
+#endif
+
    bool                      is_render_node;
    bool                      is_different_gpu;
 };
@@ -320,6 +332,13 @@ struct dri2_egl_surface
       struct ANativeWindowBuffer *buffer;
       int age;
    } color_buffers[3], *back;
+#endif
+
+#ifdef HAVE_TIZEN_PLATFORM
+   void                  *native_win;
+   tpl_surface_t         *tpl_surface;
+   tbm_surface_h          tbm_surface;
+   tbm_format             tbm_format;
 #endif
 
 #if defined(HAVE_SURFACELESS_PLATFORM)
@@ -413,6 +432,9 @@ dri2_initialize_wayland(_EGLDriver *drv, _EGLDisplay *disp);
 
 EGLBoolean
 dri2_initialize_android(_EGLDriver *drv, _EGLDisplay *disp);
+
+EGLBoolean
+dri2_initialize_tizen(_EGLDriver *drv, _EGLDisplay *disp);
 
 EGLBoolean
 dri2_initialize_surfaceless(_EGLDriver *drv, _EGLDisplay *disp);
