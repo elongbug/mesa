@@ -1677,7 +1677,7 @@ dnl
 AC_ARG_WITH([platforms],
     [AS_HELP_STRING([--with-platforms@<:@=DIRS...@:>@],
         [comma delimited native platforms libEGL/Vulkan/other supports, e.g.
-        "x11,drm,wayland,surfaceless..." @<:@default=auto@:>@])],
+        "x11,drm,wayland,surfaceless,tizen..." @<:@default=auto@:>@])],
     [with_platforms="$withval"],
     [with_platforms=auto])
 
@@ -1736,6 +1736,11 @@ for plat in $platforms; do
         DEFINES="$DEFINES -DHAVE_ANDROID_PLATFORM"
         ;;
 
+    tizen)
+        PKG_CHECK_MODULES([TIZEN], [tpl-egl libtbm libtdm])
+        DEFINES="$DEFINES -DHAVE_TIZEN_PLATFORM"
+        ;;
+
     *)
         AC_MSG_ERROR([platform '$plat' does not exist])
         ;;
@@ -1766,6 +1771,7 @@ AM_CONDITIONAL(HAVE_PLATFORM_WAYLAND, echo "$platforms" | grep -q 'wayland')
 AM_CONDITIONAL(HAVE_PLATFORM_DRM, echo "$platforms" | grep -q 'drm')
 AM_CONDITIONAL(HAVE_PLATFORM_SURFACELESS, echo "$platforms" | grep -q 'surfaceless')
 AM_CONDITIONAL(HAVE_PLATFORM_ANDROID, echo "$platforms" | grep -q 'android')
+AM_CONDITIONAL(HAVE_PLATFORM_TIZEN, echo "$platforms" | grep -q 'tizen')
 
 dnl
 dnl More DRI setup
