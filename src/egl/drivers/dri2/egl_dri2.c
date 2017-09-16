@@ -911,6 +911,11 @@ dri2_initialize(_EGLDriver *drv, _EGLDisplay *disp)
       ret = dri2_initialize_android(drv, disp);
       break;
 #endif
+#ifdef HAVE_TIZEN_PLATFORM
+   case _EGL_PLATFORM_TIZEN:
+      ret = dri2_initialize_tizen(drv, disp);
+      break;
+#endif
    default:
       _eglLog(_EGL_WARNING, "No EGL platform enabled.");
       return EGL_FALSE;
@@ -1003,6 +1008,12 @@ dri2_display_destroy(_EGLDisplay *disp)
       if (dri2_dpy->own_device) {
          wl_display_disconnect(dri2_dpy->wl_dpy);
       }
+      break;
+#endif
+#ifdef HAVE_TIZEN_PLATFORM
+   case _EGL_PLATFORM_TIZEN:
+      if (dri2_dpy->tpl_display)
+         tpl_object_unreference((tpl_object_t *)(dri2_dpy->tpl_display));
       break;
 #endif
    default:
