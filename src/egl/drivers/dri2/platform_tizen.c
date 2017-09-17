@@ -679,6 +679,20 @@ tizen_query_surface(_EGLDriver *drv, _EGLDisplay *dpy, _EGLSurface *surf,
 }
 
 static _EGLImage *
+dri2_create_image_tizen_native_buffer(_EGLDisplay *disp,
+                                      _EGLContext *ctx,
+                                      tbm_surface_h tbm_surface)
+{
+   int fd;
+
+   fd = get_native_buffer_fd(tbm_surface);
+   if (fd >= 0)
+      return tizen_create_image_from_prime_fd(disp, ctx, tbm_surface, fd);
+
+   return tizen_create_image_from_name(disp, ctx, tbm_surface);
+}
+
+static _EGLImage *
 dri2_create_image_tizen_wl_buffer(_EGLDisplay *disp,
                                   _EGLContext *ctx,
                                   tpl_handle_t native_pixmap)
@@ -705,6 +719,9 @@ tizen_create_image_khr(_EGLDriver *drv, _EGLDisplay *disp,
                        EGLClientBuffer buffer, const EGLint *attr_list)
 {
    switch (target) {
+   case EGL_NATIVE_SURFACE_TIZEN:
+      return dri2_create_image_tizen_native_buffer(disp, ctx,
+                                                   (tbm_surface_h)buffer);
    case EGL_WAYLAND_BUFFER_WL:
       return dri2_create_image_tizen_wl_buffer(disp, ctx, (tpl_handle_t)buffer);
    default:
@@ -1249,6 +1266,7 @@ dri2_initialize_tizen(_EGLDriver *drv, _EGLDisplay *dpy)
 
    dpy->Extensions.EXT_buffer_age = EGL_TRUE;
    dpy->Extensions.EXT_swap_buffers_with_damage = EGL_TRUE;
+   dpy->Extensions.TIZEN_image_native_surface = EGL_TRUE;
    dpy->Extensions.WL_bind_wayland_display = EGL_TRUE;
 
    drv->API.BindWaylandDisplayWL = tizen_bind_wayland_display_wl;
