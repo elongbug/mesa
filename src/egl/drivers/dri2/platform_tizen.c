@@ -64,6 +64,21 @@ static int get_format_bpp(tbm_format format)
    }
 }
 
+static EGLBoolean get_texture_format(tbm_format format, EGLint *value)
+{
+   switch (format) {
+   case TBM_FORMAT_ARGB8888:
+      *value = EGL_TEXTURE_RGBA;
+      return EGL_TRUE;
+   case TBM_FORMAT_XRGB8888:
+   case TBM_FORMAT_RGB565:
+      *value = EGL_TEXTURE_RGB;
+      return EGL_TRUE;
+   default:
+      return EGL_FALSE;
+   }
+}
+
 static int get_stride(tbm_surface_h tbm_surface)
 {
    tbm_surface_info_s surf_info;
@@ -734,6 +749,78 @@ static const __DRIextension *tizen_swrast_loader_extensions[] = {
    NULL,
 };
 
+static EGLBoolean
+tizen_bind_wayland_display_wl(_EGLDriver *drv, _EGLDisplay *disp,
+                              struct wl_display *wl_dpy)
+{
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+
+   (void) drv;
+   (void) wl_dpy;
+
+   if (!dri2_dpy->tpl_display)
+      return EGL_FALSE;
+
+   if (!tpl_display_get_native_handle(dri2_dpy->tpl_display))
+      return EGL_FALSE;
+
+   return EGL_TRUE;
+}
+
+static EGLBoolean
+tizen_unbind_wayland_display_wl(_EGLDriver *drv, _EGLDisplay *disp,
+                                struct wl_display *wl_dpy)
+{
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+
+   (void) drv;
+   (void) wl_dpy;
+
+   if (!dri2_dpy->tpl_display)
+      return EGL_FALSE;
+
+   if (!tpl_display_get_native_handle(dri2_dpy->tpl_display))
+      return EGL_FALSE;
+
+   return EGL_TRUE;
+}
+
+static EGLBoolean
+tizen_query_wayland_buffer_wl(_EGLDriver *drv, _EGLDisplay *disp,
+                              struct wl_resource *buffer_resource,
+                              EGLint attribute, EGLint *value)
+{
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+   tbm_format tbm_format = 0;
+   int width = 0, height = 0;
+   tpl_result_t res;
+
+   if (!dri2_dpy->tpl_display)
+      return EGL_FALSE;
+
+   if (!tpl_display_get_native_handle(dri2_dpy->tpl_display))
+      return EGL_FALSE;
+
+   res = tpl_display_get_native_pixmap_info(dri2_dpy->tpl_display,
+                                            (tpl_handle_t)buffer_resource,
+                                            &width, &height, &tbm_format);
+   if (res != TPL_ERROR_NONE)
+      return EGL_FALSE;
+
+   switch (attribute) {
+   case EGL_TEXTURE_FORMAT:
+      return get_texture_format(tbm_format, value);
+   case EGL_WIDTH:
+      *value = width;
+      return EGL_TRUE;
+   case EGL_HEIGHT:
+      *value = height;
+      return EGL_TRUE;
+   default:
+      return EGL_FALSE;
+   }
+}
+
 EGLBoolean
 dri2_initialize_tizen(_EGLDriver *drv, _EGLDisplay *dpy)
 {
@@ -864,6 +951,11 @@ dri2_initialize_tizen(_EGLDriver *drv, _EGLDisplay *dpy)
 
    dpy->Extensions.EXT_buffer_age = EGL_TRUE;
    dpy->Extensions.EXT_swap_buffers_with_damage = EGL_TRUE;
+   dpy->Extensions.WL_bind_wayland_display = EGL_TRUE;
+
+   drv->API.BindWaylandDisplayWL = tizen_bind_wayland_display_wl;
+   drv->API.UnbindWaylandDisplayWL = tizen_unbind_wayland_display_wl;
+   drv->API.QueryWaylandBufferWL = tizen_query_wayland_buffer_wl;
 
    return EGL_TRUE;
 
