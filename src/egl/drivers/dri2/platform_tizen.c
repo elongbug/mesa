@@ -213,6 +213,7 @@ tizen_window_enqueue_buffer_with_damage(_EGLDisplay *disp,
                                         EGLint n_rects)
 {
    tpl_result_t ret;
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
 
    /* To avoid blocking other EGL calls, release the display mutex before
     * we enter tizen_window_enqueue_buffer() and re-acquire the mutex upon
@@ -241,6 +242,11 @@ tizen_window_enqueue_buffer_with_damage(_EGLDisplay *disp,
    dri2_surf->back = NULL;
 
    mtx_lock(&disp->Mutex);
+
+   if (dri2_surf->dri_image_back) {
+      dri2_dpy->image->destroyImage(dri2_surf->dri_image_back);
+      dri2_surf->dri_image_back = NULL;
+   }
 
    return EGL_TRUE;
 }
@@ -339,7 +345,9 @@ tizen_create_surface(_EGLDriver *drv, _EGLDisplay *disp, EGLint type,
    if (!dri2_surf->tpl_surface)
       goto cleanup_surface;
 
-   if (dri2_dpy->dri2)
+   if (dri2_dpy->image_driver)
+      createNewDrawable = dri2_dpy->image_driver->createNewDrawable;
+   else if (dri2_dpy->dri2)
       createNewDrawable = dri2_dpy->dri2->createNewDrawable;
    else
       createNewDrawable = dri2_dpy->swrast->createNewDrawable;
@@ -400,6 +408,18 @@ tizen_destroy_surface(_EGLDriver *drv, _EGLDisplay *disp, _EGLSurface *surf)
          tizen_window_cancel_buffer(disp, dri2_surf);
    }
 
+   if (dri2_surf->dri_image_back) {
+      _eglLog(_EGL_DEBUG, "%s : %d : destroy dri_image_back", __func__, __LINE__);
+      dri2_dpy->image->destroyImage(dri2_surf->dri_image_back);
+      dri2_surf->dri_image_back = NULL;
+   }
+
+   if (dri2_surf->dri_image_front) {
+      _eglLog(_EGL_DEBUG, "%s : %d : destroy dri_image_front", __func__, __LINE__);
+      dri2_dpy->image->destroyImage(dri2_surf->dri_image_front);
+      dri2_surf->dri_image_front = NULL;
+   }
+
    dri2_dpy->core->destroyDrawable(dri2_surf->dri_drawable);
 
    tpl_object_unreference((tpl_object_t *)dri2_surf->tpl_surface);
@@ -422,6 +442,157 @@ update_buffers(struct dri2_egl_surface *dri2_surf)
    }
 
    return 0;
+}
+
+static int
+get_front_bo(struct dri2_egl_surface *dri2_surf, unsigned int format)
+{
+   struct dri2_egl_display *dri2_dpy =
+      dri2_egl_display(dri2_surf->base.Resource.Display);
+
+   if (dri2_surf->dri_image_front)
+      return 0;
+
+   if (dri2_surf->base.Type == EGL_WINDOW_BIT) {
+      /* According current EGL spec, front buffer rendering
+       * for window surface is not supported now.
+       * and mesa doesn't have the implementation of this case.
+       * Add warning message, but not treat it as error.
+       */
+      _eglLog(_EGL_DEBUG, "DRI driver requested unsupported front buffer for window surface");
+   } else if (dri2_surf->base.Type == EGL_PBUFFER_BIT) {
+      dri2_surf->dri_image_front =
+         dri2_dpy->image->createImage(dri2_dpy->dri_screen,
+                                      dri2_surf->base.Width,
+                                      dri2_surf->base.Height,
+                                      format,
+                                      0,
+                                      dri2_surf);
+      if (!dri2_surf->dri_image_front) {
+         _eglLog(_EGL_WARNING, "dri2_image_front allocation failed");
+         return -1;
+      }
+   }
+
+   return 0;
+}
+
+static int
+get_back_bo(struct dri2_egl_surface *dri2_surf)
+{
+   struct dri2_egl_display *dri2_dpy =
+      dri2_egl_display(dri2_surf->base.Resource.Display);
+   int fourcc, pitch;
+   int offset = 0, fd;
+   tbm_surface_info_s surf_info;
+
+   if (dri2_surf->dri_image_back)
+      return 0;
+
+   if (dri2_surf->base.Type == EGL_WINDOW_BIT) {
+      if (!dri2_surf->tbm_surface) {
+         _eglLog(_EGL_WARNING, "Could not get native buffer");
+         return -1;
+      }
+
+      fd = get_native_buffer_fd(dri2_surf->tbm_surface);
+      if (fd < 0) {
+         _eglLog(_EGL_WARNING, "Could not get native buffer FD");
+         return -1;
+      }
+
+      if (tbm_surface_get_info(dri2_surf->tbm_surface, &surf_info) != TBM_SURFACE_ERROR_NONE) {
+         _eglLog(_EGL_WARNING, "Could not get pitch");
+         return -1;
+      }
+
+      pitch = surf_info.planes[0].stride;
+      fourcc = get_fourcc(dri2_surf->tbm_format);
+
+      if (fourcc == -1 || pitch == 0) {
+         _eglLog(_EGL_WARNING, "Invalid buffer fourcc(%x) or pitch(%d)",
+                 fourcc, pitch);
+         return -1;
+      }
+
+      dri2_surf->base.Width = surf_info.width;
+      dri2_surf->base.Height = surf_info.height;
+
+      dri2_surf->dri_image_back =
+         dri2_dpy->image->createImageFromFds(dri2_dpy->dri_screen,
+                                             dri2_surf->base.Width,
+                                             dri2_surf->base.Height,
+                                             fourcc,
+                                             &fd,
+                                             1,
+                                             &pitch,
+                                             &offset,
+                                             dri2_surf);
+
+      if (!dri2_surf->dri_image_back) {
+         _eglLog(_EGL_WARNING, "failed to create DRI image from FD");
+         return -1;
+      }
+   } else if (dri2_surf->base.Type == EGL_PBUFFER_BIT) {
+      /* The EGL 1.5 spec states that pbuffers are single-buffered. Specifically,
+       * the spec states that they have a back buffer but no front buffer, in
+       * contrast to pixmaps, which have a front buffer but no back buffer.
+       *
+       * Single-buffered surfaces with no front buffer confuse Mesa; so we deviate
+       * from the spec, following the precedent of Mesa's EGL X11 platform. The
+       * X11 platform correctly assigns pbuffers to single-buffered configs, but
+       * assigns the pbuffer a front buffer instead of a back buffer.
+       *
+       * Pbuffers in the X11 platform mostly work today, so let's just copy its
+       * behavior instead of trying to fix (and hence potentially breaking) the
+       * world.
+       */
+      _eglLog(_EGL_DEBUG, "DRI driver requested unsupported back buffer for pbuffer surface");
+   }
+
+   return 0;
+}
+
+/* Some drivers will pass multiple bits in buffer_mask.
+ * For such case, will go through all the bits, and
+ * will not return error when unsupported buffer is requested, only
+ * return error when the allocation for supported buffer failed.
+ */
+static int
+tizen_image_get_buffers(__DRIdrawable *driDrawable, unsigned int format,
+                        uint32_t *stamp, void *loaderPrivate,
+                        uint32_t buffer_mask, struct __DRIimageList *images)
+{
+   struct dri2_egl_surface *dri2_surf = loaderPrivate;
+
+   images->image_mask = 0;
+   images->front = NULL;
+   images->back = NULL;
+
+   if (update_buffers(dri2_surf) < 0)
+      return 0;
+
+   if (buffer_mask & __DRI_IMAGE_BUFFER_FRONT) {
+      if (get_front_bo(dri2_surf, format) < 0)
+         return 0;
+
+      if (dri2_surf->dri_image_front) {
+         images->front = dri2_surf->dri_image_front;
+         images->image_mask |= __DRI_IMAGE_BUFFER_FRONT;
+      }
+   }
+
+   if (buffer_mask & __DRI_IMAGE_BUFFER_BACK) {
+      if (get_back_bo(dri2_surf) < 0)
+         return 0;
+
+      if (dri2_surf->dri_image_back) {
+         images->back = dri2_surf->dri_image_back;
+         images->image_mask |= __DRI_IMAGE_BUFFER_BACK;
+      }
+   }
+
+   return 1;
 }
 
 static EGLint
@@ -451,6 +622,13 @@ tizen_swap_buffers_with_damage(_EGLDriver *drv, _EGLDisplay *disp,
    for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
       if (dri2_surf->color_buffers[i].age > 0)
          dri2_surf->color_buffers[i].age++;
+   }
+
+   /* Make sure we have a back buffer in case we're swapping without
+    * ever rendering. */
+   if (get_back_bo(dri2_surf) < 0) {
+      _eglError(EGL_BAD_ALLOC, "dri2_swap_buffers");
+      return EGL_FALSE;
    }
 
    if (dri2_surf->back)
@@ -1057,6 +1235,13 @@ static const __DRIdri2LoaderExtension tizen_dri2_loader_extension = {
    .flushFrontBuffer     = tizen_flush_front_buffer,
 };
 
+static const __DRIimageLoaderExtension tizen_image_loader_extension = {
+   .base = { __DRI_IMAGE_LOADER, 1 },
+
+   .getBuffers          = tizen_image_get_buffers,
+   .flushFrontBuffer    = tizen_flush_front_buffer,
+};
+
 static const __DRIswrastLoaderExtension tizen_swrast_loader_extension = {
    .base = { __DRI_SWRAST_LOADER, 2 },
 
@@ -1068,6 +1253,13 @@ static const __DRIswrastLoaderExtension tizen_swrast_loader_extension = {
 
 static const __DRIextension *tizen_dri2_loader_extensions[] = {
    &tizen_dri2_loader_extension.base,
+   &image_lookup_extension.base,
+   &use_invalidate.base,
+   NULL,
+};
+
+static const __DRIextension *tizen_image_loader_extensions[] = {
+   &tizen_image_loader_extension.base,
    &image_lookup_extension.base,
    &use_invalidate.base,
    NULL,
@@ -1256,8 +1448,11 @@ dri2_initialize_tizen(_EGLDriver *drv, _EGLDisplay *dpy)
             goto cleanup;
          }
       } else {
-          err = "DRI2: render node is not suppported";
-          goto cleanup;
+         dri2_dpy->loader_extensions = tizen_image_loader_extensions;
+         if (!dri2_load_driver_dri3(dpy)) {
+            err = "DRI3: failed to load driver";
+            goto cleanup;
+         }
       }
 
    } else {
