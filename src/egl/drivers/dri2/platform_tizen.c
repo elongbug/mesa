@@ -47,6 +47,60 @@
 #include "egl_dri2_fallbacks.h"
 #include "loader.h"
 
+/* createImageFromFds requires fourcc format */
+static int get_fourcc(tbm_format format)
+{
+   switch (format) {
+   case TBM_FORMAT_RGB565:   return __DRI_IMAGE_FOURCC_RGB565;
+   case TBM_FORMAT_BGRA8888: return __DRI_IMAGE_FOURCC_ARGB8888;
+   case TBM_FORMAT_RGBA8888: return __DRI_IMAGE_FOURCC_ABGR8888;
+   case TBM_FORMAT_ARGB8888: return __DRI_IMAGE_FOURCC_ARGB8888;
+   case TBM_FORMAT_ABGR8888: return __DRI_IMAGE_FOURCC_ABGR8888;
+   case TBM_FORMAT_RGBX8888: return __DRI_IMAGE_FOURCC_XBGR8888;
+   case TBM_FORMAT_XRGB8888: return __DRI_IMAGE_FOURCC_XRGB8888;
+   default:
+      _eglLog(_EGL_WARNING, "unsupported native buffer format 0x%x", format);
+   }
+   return -1;
+}
+
+static int get_fourcc_yuv(tbm_format format)
+{
+   switch (format) {
+   case TBM_FORMAT_NV12:   return __DRI_IMAGE_FOURCC_NV12;
+   case TBM_FORMAT_NV21:   return __DRI_IMAGE_FOURCC_NV12;
+   case TBM_FORMAT_YUV420: return __DRI_IMAGE_FOURCC_YUV420;
+   case TBM_FORMAT_YVU420: return __DRI_IMAGE_FOURCC_YVU420;
+   default:
+      _eglLog(_EGL_WARNING, "unsupported native yuv buffer format 0x%x", format);
+   }
+   return -1;
+}
+
+static bool is_yuv_format(tbm_format format)
+{
+   if (get_fourcc_yuv(format) == -1)
+      return false;
+   else
+      return true;
+}
+
+static int get_format(tbm_format format)
+{
+   switch (format) {
+   case TBM_FORMAT_RGB565:   return __DRI_IMAGE_FORMAT_RGB565;
+   case TBM_FORMAT_BGRA8888: return __DRI_IMAGE_FORMAT_ARGB8888;
+   case TBM_FORMAT_RGBA8888: return __DRI_IMAGE_FORMAT_ABGR8888;
+   case TBM_FORMAT_ARGB8888: return __DRI_IMAGE_FORMAT_ARGB8888;
+   case TBM_FORMAT_ABGR8888: return __DRI_IMAGE_FORMAT_ABGR8888;
+   case TBM_FORMAT_RGBX8888: return __DRI_IMAGE_FORMAT_XBGR8888;
+   case TBM_FORMAT_XRGB8888: return __DRI_IMAGE_FORMAT_XRGB8888;
+   default:
+      _eglLog(_EGL_WARNING, "unsupported native buffer format 0x%x", format);
+   }
+   return -1;
+}
+
 static int get_format_bpp(tbm_format format)
 {
    int bpp;
@@ -82,6 +136,16 @@ static int get_pitch(tbm_surface_h tbm_surface)
    }
 
    return surf_info.planes[0].stride;
+}
+
+static int
+get_native_buffer_fd(tbm_surface_h tbm_surface)
+{
+   tbm_bo_handle bo_handle;
+   bo_handle = tbm_bo_get_handle(tbm_surface_internal_get_bo(tbm_surface, 0),
+                                 TBM_DEVICE_3D);
+
+   return (bo_handle.ptr != NULL) ? (int)bo_handle.u32 : -1;
 }
 
 static int
@@ -411,6 +475,215 @@ tizen_swap_buffers(_EGLDriver *drv, _EGLDisplay *disp, _EGLSurface *draw)
    return tizen_swap_buffers_with_damage (drv, disp, draw, NULL, 0);
 }
 
+static _EGLImage *
+tizen_create_image_from_prime_fd_yuv(_EGLDisplay *disp, _EGLContext *ctx,
+                                     tbm_surface_h tbm_surface)
+
+{
+   tbm_surface_info_s surf_info;
+   tbm_fd bo_fd[TBM_SURF_PLANE_MAX];
+   tbm_bo bo[TBM_SURF_PLANE_MAX];
+   int num_planes;
+   int i;
+   int fourcc;
+   size_t offsets[3] = {0, 0, 0};
+   size_t pitches[3] = {0, 0, 0};
+   int fds[3] = {-1, -1, -1};
+
+   if (tbm_surface_get_info(tbm_surface, &surf_info) != TBM_SURFACE_ERROR_NONE) {
+      _eglLog(_EGL_WARNING, "Could not get tbm_surface_info");
+      return NULL;
+   }
+
+   num_planes = surf_info.num_planes;
+   for (i = 0; i < num_planes; i++) {
+      tbm_bo_handle bo_handle;
+      int bo_idx = tbm_surface_internal_get_plane_bo_idx(tbm_surface, i);
+      bo[i] = tbm_surface_internal_get_bo (tbm_surface, bo_idx);
+      if (bo[i] == NULL) {
+         _eglLog(_EGL_WARNING, "Could not get tbm_surface_internal_bo");
+         return NULL;
+      }
+      bo_handle = tbm_bo_get_handle(bo[i], TBM_DEVICE_3D);
+      bo_fd[i] = bo_handle.u32;
+   }
+
+   fourcc = get_fourcc_yuv(tbm_surface_get_format(tbm_surface));
+   if (fourcc == -1) {
+      _eglLog(_EGL_WARNING, "Unsupported native yuv format");
+      return NULL;
+   }
+
+   switch (fourcc) {
+   case __DRI_IMAGE_FOURCC_NV12:
+      fds[0] = bo_fd[0];
+      fds[1] = bo_fd[1];
+      offsets[0] = surf_info.planes[0].offset;
+      offsets[1] = surf_info.planes[1].offset;
+      pitches[0] = surf_info.planes[0].stride;
+      pitches[1] = surf_info.planes[1].stride;
+      break;
+   case __DRI_IMAGE_FOURCC_YUV420:
+      fds[0] = bo_fd[0];
+      fds[1] = bo_fd[1];
+      fds[2] = bo_fd[2];
+      offsets[0] = surf_info.planes[0].offset;
+      offsets[1] = surf_info.planes[1].offset;
+      offsets[2] = surf_info.planes[2].offset;
+      pitches[0] = surf_info.planes[0].stride;
+      pitches[1] = surf_info.planes[1].stride;
+      pitches[2] = surf_info.planes[2].stride;
+      break;
+   case __DRI_IMAGE_FOURCC_YVU420:
+      fds[0] = bo_fd[0];
+      fds[1] = bo_fd[2];
+      fds[2] = bo_fd[1];
+      offsets[0] = surf_info.planes[0].offset;
+      offsets[1] = surf_info.planes[2].offset;
+      offsets[2] = surf_info.planes[1].offset;
+      pitches[0] = surf_info.planes[0].stride;
+      pitches[1] = surf_info.planes[2].stride;
+      pitches[2] = surf_info.planes[1].stride;
+      break;
+    default:
+      _eglLog(_EGL_WARNING, "Unsupported native yuv format");
+      return NULL;
+   }
+
+   if (num_planes == 2) {
+      const EGLint attr_list_2plane[] = {
+         EGL_WIDTH, surf_info.width,
+         EGL_HEIGHT, surf_info.height,
+         EGL_LINUX_DRM_FOURCC_EXT, fourcc,
+         EGL_DMA_BUF_PLANE0_FD_EXT, fds[0],
+         EGL_DMA_BUF_PLANE0_PITCH_EXT, pitches[0],
+         EGL_DMA_BUF_PLANE0_OFFSET_EXT, offsets[0],
+         EGL_DMA_BUF_PLANE1_FD_EXT, fds[1],
+         EGL_DMA_BUF_PLANE1_PITCH_EXT, pitches[1],
+         EGL_DMA_BUF_PLANE1_OFFSET_EXT, offsets[1],
+         EGL_NONE, 0
+      };
+      return dri2_create_image_dma_buf(disp, ctx, NULL, attr_list_2plane);
+   } else if (num_planes == 3) {
+      const EGLint attr_list_3plane[] = {
+         EGL_WIDTH, surf_info.width,
+         EGL_HEIGHT, surf_info.height,
+         EGL_LINUX_DRM_FOURCC_EXT, fourcc,
+         EGL_DMA_BUF_PLANE0_FD_EXT, fds[0],
+         EGL_DMA_BUF_PLANE0_PITCH_EXT, pitches[0],
+         EGL_DMA_BUF_PLANE0_OFFSET_EXT, offsets[0],
+         EGL_DMA_BUF_PLANE1_FD_EXT, fds[1],
+         EGL_DMA_BUF_PLANE1_PITCH_EXT, pitches[1],
+         EGL_DMA_BUF_PLANE1_OFFSET_EXT, offsets[1],
+         EGL_DMA_BUF_PLANE2_FD_EXT, fds[2],
+         EGL_DMA_BUF_PLANE2_PITCH_EXT, pitches[2],
+         EGL_DMA_BUF_PLANE2_OFFSET_EXT, offsets[2],
+         EGL_NONE, 0
+      };
+      return dri2_create_image_dma_buf(disp, ctx, NULL, attr_list_3plane);
+   } else {
+      _eglLog(_EGL_WARNING, "Unsupported yuv planes");
+      return NULL;
+   }
+}
+
+static _EGLImage *
+tizen_create_image_from_prime_fd(_EGLDisplay *disp, _EGLContext *ctx,
+                                 tbm_surface_h tbm_surface , int fd)
+{
+   unsigned int pitch;
+   tbm_surface_info_s surf_info;
+
+   if (is_yuv_format(tbm_surface_get_format(tbm_surface)))
+      return tizen_create_image_from_prime_fd_yuv(disp, ctx, tbm_surface);
+
+   const int fourcc = get_fourcc(tbm_surface_get_format(tbm_surface));
+   if (fourcc == -1) {
+      _eglError(EGL_BAD_PARAMETER, "eglCreateEGLImageKHR");
+      return NULL;
+   }
+
+   if (tbm_surface_get_info(tbm_surface, &surf_info) != TBM_SURFACE_ERROR_NONE) {
+      _eglError(EGL_BAD_PARAMETER, "eglCreateEGLImageKHR");
+      return NULL;
+   }
+   pitch = surf_info.planes[0].stride;
+
+   if (pitch == 0) {
+      _eglError(EGL_BAD_PARAMETER, "eglCreateEGLImageKHR");
+      return NULL;
+   }
+
+   const EGLint attr_list[] = {
+      EGL_WIDTH, surf_info.width,
+      EGL_HEIGHT, surf_info.height,
+      EGL_LINUX_DRM_FOURCC_EXT, fourcc,
+      EGL_DMA_BUF_PLANE0_FD_EXT, fd,
+      EGL_DMA_BUF_PLANE0_PITCH_EXT, pitch,
+      EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
+      EGL_NONE, 0
+   };
+
+   return dri2_create_image_dma_buf(disp, ctx, NULL, attr_list);
+}
+
+static _EGLImage *
+tizen_create_image_from_name(_EGLDisplay *disp, _EGLContext *ctx,
+                             tbm_surface_h tbm_surface)
+{
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+   struct dri2_egl_image *dri2_img;
+   int name;
+   int format;
+   unsigned int pitch;
+   tbm_surface_info_s surf_info;
+
+   name = get_native_buffer_name(tbm_surface);
+   if (!name) {
+      _eglError(EGL_BAD_PARAMETER, "eglCreateEGLImageKHR");
+      return NULL;
+   }
+
+   format = get_format(tbm_surface_get_format(tbm_surface));
+   if (format == -1)
+      return NULL;
+
+   if (tbm_surface_get_info(tbm_surface, &surf_info) != TBM_SURFACE_ERROR_NONE) {
+      _eglError(EGL_BAD_PARAMETER, "eglCreateEGLImageKHR");
+      return NULL;
+   }
+   pitch = surf_info.planes[0].stride;
+
+   if (pitch == 0) {
+      _eglError(EGL_BAD_PARAMETER, "eglCreateEGLImageKHR");
+      return NULL;
+   }
+
+   dri2_img = calloc(1, sizeof(*dri2_img));
+   if (!dri2_img) {
+      _eglError(EGL_BAD_ALLOC, "tizen_create_image_mesa_drm");
+      return NULL;
+   }
+
+   _eglInitImage(&dri2_img->base, disp);
+
+   dri2_img->dri_image =
+      dri2_dpy->image->createImageFromName(dri2_dpy->dri_screen,
+                                           surf_info.width,
+                                           surf_info.height,
+                                           format,
+                                           name,
+                                           pitch,
+                                           dri2_img);
+   if (!dri2_img->dri_image) {
+      free(dri2_img);
+      _eglError(EGL_BAD_ALLOC, "tizen_create_image_mesa_drm");
+      return NULL;
+   }
+
+   return &dri2_img->base;
+}
+
 static EGLBoolean
 tizen_query_surface(_EGLDriver *drv, _EGLDisplay *dpy, _EGLSurface *surf,
                     EGLint attribute, EGLint *value)
@@ -441,6 +714,40 @@ tizen_query_surface(_EGLDriver *drv, _EGLDisplay *dpy, _EGLSurface *surf,
          break;
    }
    return _eglQuerySurface(drv, dpy, surf, attribute, value);
+}
+
+static _EGLImage *
+dri2_create_image_tizen_wl_buffer(_EGLDisplay *disp,
+                                  _EGLContext *ctx,
+                                  tpl_handle_t native_pixmap)
+{
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+   int fd;
+   tbm_surface_h tbm_surface = NULL;
+
+   tbm_surface = tpl_display_get_buffer_from_native_pixmap(dri2_dpy->tpl_display,
+                                                           (tpl_handle_t)native_pixmap);
+   if (!tbm_surface)
+      return NULL;
+
+   fd = get_native_buffer_fd(tbm_surface);
+   if (fd >= 0)
+      return tizen_create_image_from_prime_fd(disp, ctx, tbm_surface, fd);
+
+   return tizen_create_image_from_name(disp, ctx, tbm_surface);
+}
+
+static _EGLImage *
+tizen_create_image_khr(_EGLDriver *drv, _EGLDisplay *disp,
+                       _EGLContext *ctx, EGLenum target,
+                       EGLClientBuffer buffer, const EGLint *attr_list)
+{
+   switch (target) {
+   case EGL_WAYLAND_BUFFER_WL:
+      return dri2_create_image_tizen_wl_buffer(disp, ctx, (tpl_handle_t)buffer);
+   default:
+      return dri2_create_image_khr(drv, disp, ctx, target, buffer, attr_list);
+   }
 }
 
 static void
@@ -711,7 +1018,7 @@ static const struct dri2_egl_display_vtbl tizen_display_vtbl = {
    .create_pixmap_surface = tizen_create_pixmap_surface,
    .create_pbuffer_surface = tizen_create_pbuffer_surface,
    .destroy_surface = tizen_destroy_surface,
-   .create_image = dri2_create_image_khr,
+   .create_image = tizen_create_image_khr,
    .swap_interval = dri2_fallback_swap_interval,
    .swap_buffers = tizen_swap_buffers,
    .swap_buffers_with_damage = tizen_swap_buffers_with_damage,
