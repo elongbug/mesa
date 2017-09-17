@@ -339,6 +339,15 @@ struct dri2_egl_surface
    tpl_surface_t         *tpl_surface;
    tbm_surface_h          tbm_surface;
    tbm_format             tbm_format;
+
+   /* Used to record all the tbm_surface created by tpl_surface and their ages.
+    * Usually Tizen uses at most triple buffers in tpl_surface (tbm_surface_queue)
+    * so hardcode the number of color_buffers to 3.
+    */
+   struct {
+      tbm_surface_h       tbm_surface;
+      int                 age;
+   } color_buffers[3], *back;
 #endif
 
 #if defined(HAVE_SURFACELESS_PLATFORM)

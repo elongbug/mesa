@@ -47,6 +47,53 @@
 #include "egl_dri2_fallbacks.h"
 #include "loader.h"
 
+static int get_format_bpp(tbm_format format)
+{
+   int bpp;
+
+   switch (format) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch"
+   case TBM_FORMAT_BGRA8888:
+   case TBM_FORMAT_RGBA8888:
+   case TBM_FORMAT_RGBX8888:
+   case TBM_FORMAT_ARGB8888:
+#pragma GCC diagnostic pop
+   case TBM_FORMAT_XRGB8888:
+      bpp = 4;
+      break;
+   case TBM_FORMAT_RGB565:
+      bpp = 2;
+      break;
+   default:
+      bpp = 0;
+      break;
+   }
+
+   return bpp;
+}
+
+static int get_pitch(tbm_surface_h tbm_surface)
+{
+   tbm_surface_info_s surf_info;
+
+   if (tbm_surface_get_info(tbm_surface, &surf_info) != TBM_SURFACE_ERROR_NONE) {
+      return 0;
+   }
+
+   return surf_info.planes[0].stride;
+}
+
+static int
+get_native_buffer_name(tbm_surface_h tbm_surface)
+{
+   uint32_t bo_name;
+
+   bo_name = tbm_bo_export(tbm_surface_internal_get_bo(tbm_surface, 0));
+
+   return (bo_name != 0 ) ? (int)bo_name : -1;
+}
+
 static EGLBoolean
 tizen_window_dequeue_buffer(struct dri2_egl_surface *dri2_surf)
 {
@@ -63,6 +110,33 @@ tizen_window_dequeue_buffer(struct dri2_egl_surface *dri2_surf)
    if (dri2_surf->base.Width != width || dri2_surf->base.Height != height) {
       dri2_surf->base.Width = width;
       dri2_surf->base.Height = height;
+      dri2_egl_surface_free_local_buffers(dri2_surf);
+   }
+
+   /* Record all the buffers created by tpl_surface (tbm_surface_queue)
+    *   and update back buffer * for updating buffer's age in swap_buffers.
+    */
+   EGLBoolean updated = EGL_FALSE;
+   for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
+      if (!dri2_surf->color_buffers[i].tbm_surface) {
+         dri2_surf->color_buffers[i].tbm_surface = dri2_surf->tbm_surface;
+         dri2_surf->color_buffers[i].age = 0;
+      }
+      if (dri2_surf->color_buffers[i].tbm_surface == dri2_surf->tbm_surface) {
+         dri2_surf->back = &dri2_surf->color_buffers[i];
+         updated = EGL_TRUE;
+         break;
+      }
+   }
+
+   if (!updated) {
+      /* In case of all the buffers were recreated , reset the color_buffers */
+      for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
+         dri2_surf->color_buffers[i].tbm_surface = NULL;
+         dri2_surf->color_buffers[i].age = 0;
+      }
+      dri2_surf->color_buffers[0].tbm_surface = dri2_surf->tbm_surface;
+      dri2_surf->back = &dri2_surf->color_buffers[0];
    }
 
    return EGL_TRUE;
@@ -100,6 +174,7 @@ tizen_window_enqueue_buffer_with_damage(_EGLDisplay *disp,
 
    tbm_surface_internal_unref(dri2_surf->tbm_surface);
    dri2_surf->tbm_surface = NULL;
+   dri2_surf->back = NULL;
 
    mtx_lock(&disp->Mutex);
 
@@ -200,7 +275,10 @@ tizen_create_surface(_EGLDriver *drv, _EGLDisplay *disp, EGLint type,
    if (!dri2_surf->tpl_surface)
       goto cleanup_surface;
 
-   createNewDrawable = dri2_dpy->swrast->createNewDrawable;
+   if (dri2_dpy->dri2)
+      createNewDrawable = dri2_dpy->dri2->createNewDrawable;
+   else
+      createNewDrawable = dri2_dpy->swrast->createNewDrawable;
 
    dri2_surf->dri_drawable = (*createNewDrawable)(dri2_dpy->dri_screen, config,
                                                   dri2_surf);
@@ -251,6 +329,8 @@ tizen_destroy_surface(_EGLDriver *drv, _EGLDisplay *disp, _EGLSurface *surf)
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
    struct dri2_egl_surface *dri2_surf = dri2_egl_surface(surf);
 
+   dri2_egl_surface_free_local_buffers(dri2_surf);
+
    if (dri2_surf->base.Type == EGL_WINDOW_BIT) {
       if (dri2_surf->tbm_surface)
          tizen_window_cancel_buffer(disp, dri2_surf);
@@ -280,6 +360,19 @@ update_buffers(struct dri2_egl_surface *dri2_surf)
    return 0;
 }
 
+static EGLint
+tizen_query_buffer_age(_EGLDriver *drv, _EGLDisplay *disp, _EGLSurface *surface)
+{
+   struct dri2_egl_surface *dri2_surf = dri2_egl_surface(surface);
+
+   if (update_buffers(dri2_surf) < 0) {
+      _eglError(EGL_BAD_ALLOC, "tizen_query_buffer_age");
+      return -1;
+   }
+
+   return dri2_surf->back ? dri2_surf->back->age : 0;
+}
+
 static EGLBoolean
 tizen_swap_buffers_with_damage(_EGLDriver *drv, _EGLDisplay *disp,
                                _EGLSurface *draw, const EGLint *rects,
@@ -291,10 +384,23 @@ tizen_swap_buffers_with_damage(_EGLDriver *drv, _EGLDisplay *disp,
    if (dri2_surf->base.Type != EGL_WINDOW_BIT)
       return EGL_TRUE;
 
+   for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
+      if (dri2_surf->color_buffers[i].age > 0)
+         dri2_surf->color_buffers[i].age++;
+   }
+
+   if (dri2_surf->back)
+      dri2_surf->back->age = 1;
+
    if (dri2_surf->tbm_surface)
       tizen_window_enqueue_buffer_with_damage(disp, dri2_surf, rects, n_rects);
 
-   dri2_dpy->core->swapBuffers(dri2_surf->dri_drawable);
+   if (dri2_dpy->swrast) {
+      dri2_dpy->core->swapBuffers(dri2_surf->dri_drawable);
+   } else {
+      dri2_flush_drawable_for_swapbuffers(disp, draw);
+      dri2_dpy->flush->invalidate(dri2_surf->dri_drawable);
+   }
 
    return EGL_TRUE;
 }
@@ -335,6 +441,87 @@ tizen_query_surface(_EGLDriver *drv, _EGLDisplay *dpy, _EGLSurface *surf,
          break;
    }
    return _eglQuerySurface(drv, dpy, surf, attribute, value);
+}
+
+static void
+tizen_flush_front_buffer(__DRIdrawable * driDrawable, void *loaderPrivate)
+{
+}
+
+static int
+tizen_get_buffers_parse_attachments(struct dri2_egl_surface *dri2_surf,
+                                    unsigned int *attachments, int count)
+{
+   int num_buffers = 0;
+
+   /* fill dri2_surf->buffers */
+   for (int i = 0; i < count * 2; i += 2) {
+      __DRIbuffer *buf, *local;
+
+      assert(num_buffers < ARRAY_SIZE(dri2_surf->buffers));
+      buf = &dri2_surf->buffers[num_buffers];
+
+      switch (attachments[i]) {
+      case __DRI_BUFFER_BACK_LEFT:
+         if (dri2_surf->base.Type == EGL_WINDOW_BIT) {
+            buf->attachment = attachments[i];
+            buf->name = get_native_buffer_name(dri2_surf->tbm_surface);
+            buf->cpp = get_format_bpp(tbm_surface_get_format(dri2_surf->tbm_surface));
+            buf->pitch = get_pitch(dri2_surf->tbm_surface);
+            buf->flags = 0;
+
+            if (buf->name)
+               num_buffers++;
+
+            break;
+         }
+         /* fall through for pbuffers */
+      case __DRI_BUFFER_DEPTH:
+      case __DRI_BUFFER_STENCIL:
+      case __DRI_BUFFER_ACCUM:
+      case __DRI_BUFFER_DEPTH_STENCIL:
+      case __DRI_BUFFER_HIZ:
+         local = dri2_egl_surface_alloc_local_buffer(dri2_surf, attachments[i],
+                                                     attachments[i + 1]);
+
+         if (local) {
+            *buf = *local;
+            num_buffers++;
+         }
+         break;
+      case __DRI_BUFFER_FRONT_LEFT:
+      case __DRI_BUFFER_FRONT_RIGHT:
+      case __DRI_BUFFER_FAKE_FRONT_LEFT:
+      case __DRI_BUFFER_FAKE_FRONT_RIGHT:
+      case __DRI_BUFFER_BACK_RIGHT:
+      default:
+         /* no front or right buffers */
+         break;
+      }
+   }
+
+   return num_buffers;
+}
+
+static __DRIbuffer *
+tizen_get_buffers_with_format(__DRIdrawable * driDrawable,
+                              int *width, int *height,
+                              unsigned int *attachments, int count,
+                              int *out_count, void *loaderPrivate)
+{
+   struct dri2_egl_surface *dri2_surf = loaderPrivate;
+
+   if (update_buffers(dri2_surf) < 0)
+      return NULL;
+
+   *out_count = tizen_get_buffers_parse_attachments(dri2_surf, attachments, count);
+
+   if (width)
+      *width = dri2_surf->base.Width;
+   if (height)
+      *height = dri2_surf->base.Height;
+
+   return dri2_surf->buffers;
 }
 
 static int
@@ -531,11 +718,19 @@ static const struct dri2_egl_display_vtbl tizen_display_vtbl = {
    .swap_buffers_region = dri2_fallback_swap_buffers_region,
    .post_sub_buffer = dri2_fallback_post_sub_buffer,
    .copy_buffers = dri2_fallback_copy_buffers,
-   .query_buffer_age = dri2_fallback_query_buffer_age,
+   .query_buffer_age = tizen_query_buffer_age,
    .query_surface = tizen_query_surface,
    .create_wayland_buffer_from_image = dri2_fallback_create_wayland_buffer_from_image,
    .get_sync_values = dri2_fallback_get_sync_values,
    .get_dri_drawable = dri2_surface_get_dri_drawable,
+};
+
+static const __DRIdri2LoaderExtension tizen_dri2_loader_extension = {
+   .base = { __DRI_DRI2_LOADER, 3 },
+
+   .getBuffers           = NULL,
+   .getBuffersWithFormat = tizen_get_buffers_with_format,
+   .flushFrontBuffer     = tizen_flush_front_buffer,
 };
 
 static const __DRIswrastLoaderExtension tizen_swrast_loader_extension = {
@@ -545,6 +740,13 @@ static const __DRIswrastLoaderExtension tizen_swrast_loader_extension = {
    .putImage        = tizen_swrast_put_image,
    .getImage        = tizen_swrast_get_image,
    .putImage2       = tizen_swrast_put_image2,
+};
+
+static const __DRIextension *tizen_dri2_loader_extensions[] = {
+   &tizen_dri2_loader_extension.base,
+   &image_lookup_extension.base,
+   &use_invalidate.base,
+   NULL,
 };
 
 static const __DRIextension *tizen_swrast_loader_extensions[] = {
@@ -559,6 +761,8 @@ dri2_initialize_tizen(_EGLDriver *drv, _EGLDisplay *dpy)
    tpl_display_t *tpl_display = NULL;
    const char *err;
    int tbm_bufmgr_fd = -1;
+   char *tbm_bufmgr_device_name = NULL;
+   int hw_accel = (getenv("LIBGL_ALWAYS_SOFTWARE") == NULL);
 
    loader_set_logger(_eglLog);
 
@@ -587,13 +791,77 @@ dri2_initialize_tizen(_EGLDriver *drv, _EGLDisplay *dpy)
       goto cleanup;
    }
 
-   dri2_dpy->fd = tbm_bufmgr_fd;
-   dri2_dpy->driver_name = strdup("swrast");
-   if (!dri2_load_driver_swrast(dpy)) {
-      err = "DRI2: failed to load swrast driver";
-      goto cleanup;
+   if (hw_accel) {
+      int fd = -1;
+
+      if (drmGetNodeTypeFromFd(tbm_bufmgr_fd) == DRM_NODE_RENDER) {
+
+         tbm_bufmgr_device_name = loader_get_device_name_for_fd(tbm_bufmgr_fd);
+         if (tbm_bufmgr_device_name == NULL) {
+            err = "DRI2: failed to get tbm_bufmgr device name";
+            goto cleanup;
+         }
+         fd = loader_open_device(tbm_bufmgr_device_name);
+
+      } else {
+         if (!tbm_drm_helper_get_auth_info(&fd, NULL, NULL)) {
+
+            /* FIXME: tbm_drm_helper_get_auth_info() does not support the case of
+             *        display server for now. this code is fallback routine for
+             *        that Enlightenment Server fails on tbm_drm_helper_get_auth_info.
+             *        When tbm_drm_helper_get_auth_info() supports display server
+             *        case, then remove below routine.
+             */
+#if 1
+            tbm_bufmgr_device_name = loader_get_device_name_for_fd(tbm_bufmgr_fd);
+            if (tbm_bufmgr_device_name == NULL) {
+               err = "DRI2: failed to get tbm_bufmgr device name";
+               goto cleanup;
+            }
+            fd = loader_open_device(tbm_bufmgr_device_name);
+#else
+            err = "DRI2: failed to get fd from tbm_drm_helper_get_auth_info()";
+            goto cleanup;
+#endif
+         }
+      }
+
+      if (fd == -1) {
+         err = "DRI2: failed to get fd";
+         goto cleanup;
+      }
+      dri2_dpy->fd = fd;
+
+      dri2_dpy->driver_name = loader_get_driver_for_fd(dri2_dpy->fd);
+      if (dri2_dpy->driver_name == NULL) {
+         err = "DRI2: failed to get driver name";
+         goto cleanup;
+      }
+
+      dri2_dpy->is_render_node = drmGetNodeTypeFromFd(dri2_dpy->fd) == DRM_NODE_RENDER;
+      /* render nodes cannot use Gem names, and thus do not support
+       * the __DRI_DRI2_LOADER extension */
+
+      if (!dri2_dpy->is_render_node) {
+         dri2_dpy->loader_extensions = tizen_dri2_loader_extensions;
+         if (!dri2_load_driver(dpy)) {
+            err = "DRI2: failed to load driver";
+            goto cleanup;
+         }
+      } else {
+          err = "DRI2: render node is not suppported";
+          goto cleanup;
+      }
+
+   } else {
+      dri2_dpy->fd = tbm_bufmgr_fd;
+      dri2_dpy->driver_name = strdup("swrast");
+      if (!dri2_load_driver_swrast(dpy)) {
+         err = "DRI2: failed to load swrast driver";
+         goto cleanup;
+      }
+      dri2_dpy->loader_extensions = tizen_swrast_loader_extensions;
    }
-   dri2_dpy->loader_extensions = tizen_swrast_loader_extensions;
 
    if (!dri2_create_screen(dpy)) {
       err = "DRI2: failed to create screen";
@@ -616,6 +884,9 @@ dri2_initialize_tizen(_EGLDriver *drv, _EGLDisplay *dpy)
     * initialization.
     */
    dri2_dpy->vtbl = &tizen_display_vtbl;
+
+   dpy->Extensions.EXT_buffer_age = EGL_TRUE;
+   dpy->Extensions.EXT_swap_buffers_with_damage = EGL_TRUE;
 
    return EGL_TRUE;
 
