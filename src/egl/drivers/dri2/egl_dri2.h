@@ -78,6 +78,8 @@ struct zwp_linux_dmabuf_v1;
 #else
        /* Usually Android uses at most triple buffers in ANativeWindow
         * so hardcode the number of color_buffers to 3.
+        * And usually Tizen uses at most triple buffers in tpl_surface
+        * (tbm_surface_queue) so hardcode the number of color_buffers to 3.
         */
 #define COLOR_BUFFERS_SIZE 3
 #endif
