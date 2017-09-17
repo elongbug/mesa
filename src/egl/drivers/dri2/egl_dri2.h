@@ -318,11 +318,11 @@ struct dri2_egl_surface
    } color_buffers[COLOR_BUFFERS_SIZE], *back, *current;
 
    __DRIimage *dri_image_front;
+   __DRIimage *dri_image_back;
 
 #ifdef HAVE_ANDROID_PLATFORM
    struct ANativeWindow *window;
    struct ANativeWindowBuffer *buffer;
-   __DRIimage *dri_image_back;
 #endif
 
 #ifdef HAVE_TIZEN_PLATFORM
