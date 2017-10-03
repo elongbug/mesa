@@ -1066,6 +1066,18 @@ dri2_egl_surface_free_local_buffers(struct dri2_egl_surface *dri2_surf)
    }
 }
 
+void
+dri2_egl_surface_free_outdated_buffers_and_update_size(struct dri2_egl_surface *dri2_surf,
+                                                       int width, int height)
+{
+   /* free outdated buffers and update the surface size */
+   if (dri2_surf->base.Width != width || dri2_surf->base.Height != height) {
+      dri2_egl_surface_free_local_buffers(dri2_surf);
+      dri2_surf->base.Width = width;
+      dri2_surf->base.Height = height;
+   }
+}
+
 /**
  * Called via eglTerminate(), drv->API.Terminate().
  *
