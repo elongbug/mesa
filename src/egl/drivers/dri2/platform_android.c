@@ -354,12 +354,7 @@ droid_destroy_surface(_EGLDriver *drv, _EGLDisplay *disp, _EGLSurface *surf)
    }
 
    dri2_egl_surface_destroy_image_back(dri2_surf);
-
-   if (dri2_surf->dri_image_front) {
-      _eglLog(_EGL_DEBUG, "%s : %d : destroy dri_image_front", __func__, __LINE__);
-      dri2_dpy->image->destroyImage(dri2_surf->dri_image_front);
-      dri2_surf->dri_image_front = NULL;
-   }
+   dri2_egl_surface_destroy_image_front(dri2_surf);
 
    dri2_dpy->core->destroyDrawable(dri2_surf->dri_drawable);
 
