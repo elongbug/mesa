@@ -1167,6 +1167,42 @@ dri2_egl_surface_destroy_image_front(struct dri2_egl_surface *dri2_surf)
 #endif
 }
 
+int
+dri2_egl_surface_get_image_front(struct dri2_egl_surface *dri2_surf,
+                                 unsigned int format)
+{
+#if defined(HAVE_ANDROID_PLATFORM) || defined(HAVE_TIZEN_PLATFORM)
+   struct dri2_egl_display *dri2_dpy =
+      dri2_egl_display(dri2_surf->base.Resource.Display);
+
+   if (dri2_surf->dri_image_front)
+      return 0;
+
+   if (dri2_surf->base.Type == EGL_WINDOW_BIT) {
+      /* According current EGL spec, front buffer rendering
+       * for window surface is not supported now.
+       * and mesa doesn't have the implementation of this case.
+       * Add warning message, but not treat it as error.
+       */
+      _eglLog(_EGL_DEBUG, "DRI driver requested unsupported front buffer for window surface");
+   } else if (dri2_surf->base.Type == EGL_PBUFFER_BIT) {
+      dri2_surf->dri_image_front =
+         dri2_dpy->image->createImage(dri2_dpy->dri_screen,
+                                      dri2_surf->base.Width,
+                                      dri2_surf->base.Height,
+                                      format,
+                                      0,
+                                      dri2_surf);
+      if (!dri2_surf->dri_image_front) {
+         _eglLog(_EGL_WARNING, "dri2_image_front allocation failed");
+         return -1;
+      }
+   }
+#endif
+
+   return 0;
+}
+
 /**
  * Called via eglTerminate(), drv->API.Terminate().
  *
