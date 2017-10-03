@@ -463,6 +463,11 @@ dri2_egl_surface_free_local_buffers(struct dri2_egl_surface *dri2_surf);
 void
 dri2_egl_surface_free_outdated_buffers_and_update_size(struct dri2_egl_surface *dri2_surf,
                                                        int width, int height);
+
+void
+dri2_egl_surface_record_buffers_and_update_back_buffer(struct dri2_egl_surface *dri2_surf,
+                                                       void *buffer);
+
 EGLBoolean
 dri2_init_surface(_EGLSurface *surf, _EGLDisplay *dpy, EGLint type,
         _EGLConfig *conf, const EGLint *attrib_list, EGLBoolean enable_out_fence);
