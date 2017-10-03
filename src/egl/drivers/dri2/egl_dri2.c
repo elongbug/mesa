@@ -1153,6 +1153,20 @@ dri2_egl_surface_destroy_image_back(struct dri2_egl_surface *dri2_surf)
 #endif
 }
 
+void
+dri2_egl_surface_destroy_image_front(struct dri2_egl_surface *dri2_surf)
+{
+#if defined(HAVE_ANDROID_PLATFORM) || defined(HAVE_TIZEN_PLATFORM)
+   struct dri2_egl_display *dri2_dpy =
+      dri2_egl_display(dri2_surf->base.Resource.Display);
+
+   if (dri2_surf->dri_image_front) {
+      dri2_dpy->image->destroyImage(dri2_surf->dri_image_front);
+      dri2_surf->dri_image_front = NULL;
+   }
+#endif
+}
+
 /**
  * Called via eglTerminate(), drv->API.Terminate().
  *
