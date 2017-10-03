@@ -567,16 +567,7 @@ droid_swap_buffers(_EGLDriver *drv, _EGLDisplay *disp, _EGLSurface *draw)
    if (dri2_surf->base.Type != EGL_WINDOW_BIT)
       return EGL_TRUE;
 
-   for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
-      if (dri2_surf->color_buffers[i].age > 0)
-         dri2_surf->color_buffers[i].age++;
-   }
-
-   /* "XXX: we don't use get_back_bo() since it causes regressions in
-    * several dEQP tests.
-    */
-   if (dri2_surf->back)
-      dri2_surf->back->age = 1;
+   dri2_surface_update_age(draw);
 
    dri2_flush_drawable_for_swapbuffers(disp, draw);
 
