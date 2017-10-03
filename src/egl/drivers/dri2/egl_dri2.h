@@ -312,10 +312,11 @@ struct dri2_egl_surface
       int                 age;
    } color_buffers[COLOR_BUFFERS_SIZE], *back, *current;
 
+   __DRIimage *dri_image_back;
+
 #ifdef HAVE_ANDROID_PLATFORM
    struct ANativeWindow *window;
    struct ANativeWindowBuffer *buffer;
-   __DRIimage *dri_image_back;
    __DRIimage *dri_image_front;
 #endif
 
@@ -470,6 +471,9 @@ dri2_egl_surface_record_buffers_and_update_back_buffer(struct dri2_egl_surface *
 
 void
 dri2_egl_surface_update_buffer_age(struct dri2_egl_surface *dri2_surf);
+
+void
+dri2_egl_surface_destroy_image_back(struct dri2_egl_surface *dri2_surf);
 
 EGLBoolean
 dri2_init_surface(_EGLSurface *surf, _EGLDisplay *dpy, EGLint type,
