@@ -1120,6 +1120,25 @@ dri2_egl_surface_record_buffers_and_update_back_buffer(struct dri2_egl_surface *
 #endif
 }
 
+void
+dri2_egl_surface_update_buffer_age(struct dri2_egl_surface *dri2_surf)
+{
+   for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
+      if (dri2_surf->color_buffers[i].age > 0)
+         dri2_surf->color_buffers[i].age++;
+   }
+
+#ifdef HAVE_ANDROID_PLATFORM
+   /* "XXX: we don't use get_back_bo() since it causes regressions in
+    * several dEQP tests.
+    */
+   if (dri2_surf->back)
+      dri2_surf->back->age = 1;
+#else
+   dri2_surf->back->age = 1;
+#endif
+}
+
 /**
  * Called via eglTerminate(), drv->API.Terminate().
  *
