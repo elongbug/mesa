@@ -1092,6 +1092,37 @@ dri2_surface_fixup(_EGLSurface *surf, int width, int height)
    }
 }
 
+void
+dri2_surface_set_back_buffer(_EGLSurface *surf, void *buffer)
+{
+   /* Record all the buffers created by each platform's native window and
+    * update back buffer for updating buffer's age in swap_buffers.
+    */
+   struct dri2_egl_surface *dri2_surf = dri2_egl_surface(surf);
+   EGLBoolean updated = EGL_FALSE;
+
+   for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
+      if (!dri2_surf->color_buffers[i].native_buffer) {
+         dri2_surf->color_buffers[i].native_buffer = buffer;
+      }
+      if (dri2_surf->color_buffers[i].native_buffer == buffer) {
+         dri2_surf->back = &dri2_surf->color_buffers[i];
+         updated = EGL_TRUE;
+         break;
+      }
+   }
+
+   if (!updated) {
+      /* In case of all the buffers were recreated, reset the color_buffers */
+      for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
+         dri2_surf->color_buffers[i].native_buffer = NULL;
+         dri2_surf->color_buffers[i].age = 0;
+      }
+      dri2_surf->color_buffers[0].native_buffer = buffer;
+      dri2_surf->back = &dri2_surf->color_buffers[0];
+   }
+}
+
 /**
  * Called via eglTerminate(), drv->API.Terminate().
  *
