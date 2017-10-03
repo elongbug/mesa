@@ -1078,6 +1078,48 @@ dri2_egl_surface_free_outdated_buffers_and_update_size(struct dri2_egl_surface *
    }
 }
 
+void
+dri2_egl_surface_record_buffers_and_update_back_buffer(struct dri2_egl_surface *dri2_surf,
+                                                       void *buf)
+{
+#if defined(HAVE_ANDROID_PLATFORM) || defined(HAVE_TIZEN_PLATFORM)
+   /* Record all the buffers created by ANativeWindow [Android] or
+    * tpl_surface (tbm_surface_queue) [TIZEN] and update back buffer for updating
+    * buffer's age in swap_buffers.
+    */
+
+#ifdef HAVE_ANDROID_PLATFORM
+   struct ANativeWindowBuffer *buffer = (struct ANativeWindowBuffer *)buf;
+#endif
+#ifdef HAVE_TIZEN_PLATFORM
+   tbm_surface_h buffer = (tbm_surface_h)buf;
+#endif
+   EGLBoolean updated = EGL_FALSE;
+
+   for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
+      if (!dri2_surf->color_buffers[i].buffer) {
+         dri2_surf->color_buffers[i].buffer = buffer;
+         dri2_surf->color_buffers[i].age = 0;
+      }
+      if (dri2_surf->color_buffers[i].buffer == buffer) {
+         dri2_surf->back = &dri2_surf->color_buffers[i];
+         updated = EGL_TRUE;
+         break;
+      }
+   }
+
+   if (!updated) {
+      /* In case of all the buffers were recreated, reset the color_buffers */
+      for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
+         dri2_surf->color_buffers[i].buffer = NULL;
+         dri2_surf->color_buffers[i].age = 0;
+      }
+      dri2_surf->color_buffers[0].buffer = buffer;
+      dri2_surf->back = &dri2_surf->color_buffers[0];
+   }
+#endif
+}
+
 /**
  * Called via eglTerminate(), drv->API.Terminate().
  *
