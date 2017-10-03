@@ -478,6 +478,9 @@ dri2_egl_surface_destroy_image_back(struct dri2_egl_surface *dri2_surf);
 void
 dri2_egl_surface_destroy_image_front(struct dri2_egl_surface *dri2_surf);
 
+int
+dri2_egl_surface_get_image_front(struct dri2_egl_surface *dri2_surf,
+                                 unsigned int format);
 EGLBoolean
 dri2_init_surface(_EGLSurface *surf, _EGLDisplay *dpy, EGLint type,
         _EGLConfig *conf, const EGLint *attrib_list, EGLBoolean enable_out_fence);
