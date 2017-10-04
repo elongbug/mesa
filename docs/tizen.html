@@ -1,0 +1,251 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html lang="en">
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+  <title>Tizen</title>
+  <link rel="stylesheet" type="text/css" href="mesa.css">
+</head>
+<body>
+
+<div class="header">
+  <h1>The Mesa 3D Graphics Library</h1>
+</div>
+
+<iframe src="contents.html"></iframe>
+<div class="content">
+
+<h1>Introduction</h1>
+
+<p>
+This document describes the essential elements of Tizen's platform-level
+graphics architecture related to OpenGL ES and EGL,
+and how it is used by the application framework and the display server.
+The focus is on how graphical data buffers move through the system.
+</p>
+
+<p>
+Tizen platform requires the OpenGL ES driver for the acceleration of
+the Wayland display server and wayland-eglclient.
+This platform demands OpenGL ES and EGL driver which is implemented by
+the Tizen EGL Porting Layer.
+</p>
+<br />
+
+<h1>Tizen OpenGL ES and EGL Architecture</h1>
+
+<p>
+The following figure illustrates the Tizen OpenGL ES and EGL architecture.
+</p>
+
+<p style="text-align: center;">
+  <img src="https://wiki.tizen.org/images/d/d6/OPENGLES_STACK.png"
+  width="800" height="582" />
+</p>
+
+<br />
+<h2>CoreGL</h2>
+
+<p>An injection layer of OpenGL ES that provides the following capabilities:</p>
+
+<ul>
+  <li> Support for driver-independent optimization (FastPath)</li>
+  <li> EGL/OpenGL ES debugging</li>
+  <li> Performance logging</li>
+</ul>
+
+<br />
+<h2>Tizen Porting Layer (TPL) for EGL</h2>
+
+<p>
+TPL-EGL is an abstraction layer for surface and buffer management on Tizen
+platform. It is used for implementation of the EGL platform functions.
+</p>
+
+<p style="text-align: center;">
+  <img src="https://wiki.tizen.org/images/0/0e/Tpl_architecture.png"
+  width="800" height="204" />
+</p>
+
+<br />
+<ul>
+  <li>
+  The background for the Tizen EGL Porting Layer for EGL is in various window
+  system protocols in Tizen. There was a need for separating common layer and
+  backend.
+  </li>
+  <li>
+  Tizen uses the Tizen Porting Layer for EGL, as the TPL-EGL APIs prevents
+  burdens of the EGL porting on various window system protocols.
+  The GPU GL Driver’s Window System Porting Layer can be implemented by
+  TPL-EGL APIs which are the corresponding window system APIs.
+  The TBM, Wayland, and GBM backends are supported.
+  </li>
+</ul>
+
+<br />
+<h2>Tizen Porting Layer for EGL Object Model</h2>
+
+<p>
+TPL-EGL provides interfaces based of object driven model.
+Every TPL-EGL object can be represented as a generic tpl_object_t,
+which is reference-counted and provides common functions.
+Currently, display and surface types of TPL-EGL objects are provided.
+Display, like normal display, represents a display system which is usually
+used for connection to the server. Surface corresponds to a native surface
+like wl_surface. A surface might be configured to use N-buffers,
+but is usually double-buffered or triple-buffered.
+Buffer is actually something to render on, usually a set of pixels
+or a block of memory. For these 2 objects, the Wayland, GBM, TBM backend are
+defined, and they are corresponding to their own window systems.
+This means that you do not need to care about the window systems.
+</p>
+
+<br />
+<h3>TPL-EGL Core Object</h3>
+
+<ul>
+  <h4>TPL-EGL Object</h4>
+  <ul>
+    <li>Base class for all TPL-EGL objects</li>
+  </ul>
+
+  <h4>TPL-EGL Display</h4>
+  <ul>
+    <li>
+    Encapsulates the native display object (Display *, wl_display) Like a
+    normal display, represents a display system which is usually used for
+    connection to the server, scope for other objects.
+  </li>
+  </ul>
+
+  <h4>TPL-EGL Surface</h4>
+  <ul>
+    <li>
+    Encapsulates the native drawable object (Window, Pixmap, wl_surface)
+    The surface corresponds to a native surface, such as tbm_surface_queue
+    or wl_surface. A surface can be configured to use N-buffers,
+    but they are usually double-buffered or triple-buffered.
+    </li>
+  </ul>
+</ul>
+
+<br />
+<h3>TPL-EGL Objects and Corresponding EGL Objects</h3>
+<p>
+Both TPL-EGL and vendor GLES/EGL driver handles the tbm_surface as
+TPL surface's corresponding buffer. It is represented by the TBM_Surface
+part in the following figure.
+</p>
+
+<p style="text-align: center;">
+  <img src="https://wiki.tizen.org/images/e/e6/Relationship_TPL_EGL_Gray.png"
+  width="800" height="403" />
+</p>
+
+<br />
+<p>The following figure illustrates the GLES drawing API flow.</p>
+
+<p style="text-align: center;">
+  <img src="https://wiki.tizen.org/images/4/41/GLES_API_FLOW_GRAY.png"
+  width="800" height="480" />
+</p>
+
+<br />
+<h2>Tizen Buffer Manager (TBM)</h2>
+
+<p>
+Tizen Buffer Manager (TBM) provides the abstraction interface for the graphic
+buffer manager in Tizen.
+</p>
+
+<ul>
+  <li>
+  The TBM has a frontend libary and a backend module. The TBM frontend library
+  is hardware-independent and provides the generic buffer interface for users.
+  On the other hand, the TBM backend module is hardware-dependent and provides
+  the buffer interface depended on the target system. The chipset vendors have
+  to provide their own backend modules in order for the TBM to work well in
+  Tizen platform.
+  </li>
+  <li>
+  With TBM, the client and server can allocate buffers and share it between
+  them. For example, a client allocates a graphic buffer, draws something on
+  it with GL and sends it to the display server for displaying it on the
+  screen without buffer copying.
+  </li>
+</ul>
+
+
+<h3>TBM Surface queue</h3>
+
+<p>Provide Graphic Buffer queue between provider and consumer module.</p>
+
+<ul>
+  <li>Provider renders something at graphic buffer.</li>
+  <li>Consumer uses graphic buffer.</li>
+  <li>Example) GPU Driver is provider and Display server is Consumer</li>
+</ul>
+
+<h3>Wayland-TBM</h3>
+
+<ul>
+  <li>
+  The wayland-tbm is the library for sharing the tbm_surfaces between the client
+  and the server.
+  </li>
+  <li>
+  When the client creates the wl_buffer though the wayland-tbm library, the
+  client can gets the wl_buffer which is  shared with the server through the
+  wl_tbm protocol.
+  </li>
+</ul>
+
+<br />
+<h2>References</h2>
+
+<li>
+  <a href="https://wiki.tizen.org/3.0_Porting_Guide/Graphics_and_UI/OpenGL">
+  Tizen 3.0 OpenGLES/EGL Driver Porting Guide
+  </a>
+</li>
+
+<li>
+  <a href="https://wiki.tizen.org/wiki/3.0_Porting_Guide/Graphics_and_UI/libtpl-egl">
+  Tizen 3.0 OpenGLES/EGL Driver Porting Guide BufferFlow
+  </a>
+</li>
+
+<li>
+  <a href="https://www.x.org/wiki/Events/XDC2016/Program/XDC2016_Tizen_Window_System_EGL_Vulkan.pdf">
+  Tizen 3.0 's Window System Integration Layer of OpenGLES/EGL & Vulkan Driver - XDC2017
+  </a>
+</li>
+
+<li>
+  <a href="https://wiki.tizen.org/wiki/TBM">
+  Tizen Buffer Manager (TBM)
+  </a>
+</li>
+
+<li>
+  <a href="https://wiki.tizen.org/3.0_Porting_Guide/Setup_Build_Enviromnent_for_RPI3">
+  Setup build environment for Tizen (Raspberry Pi 3)
+  </a>
+</li>
+
+<li>
+  <a href="https://wiki.tizen.org/3.0_Porting_Guide/Binary_Download_Instruction_for_RPI3">
+  Tizen Binary Download Instruction for Raspberry Pi 3
+  </a>
+</li>
+
+<li>
+  <a href="https://wiki.tizen.org/3.0_Porting_Guide/Setup_RPI3_for_Tizen_Instruction">
+  Setup Raspberry Pi 3 for Tizen Instruction
+  </a>
+</li>
+<br />
+
+</div>
+</body>
+</html>
