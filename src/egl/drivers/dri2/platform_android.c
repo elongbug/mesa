@@ -193,10 +193,10 @@ droid_window_dequeue_buffer(struct dri2_egl_surface *dri2_surf)
     */
    EGLBoolean updated = EGL_FALSE;
    for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
-      if (!dri2_surf->color_buffers[i].buffer) {
-         dri2_surf->color_buffers[i].buffer = dri2_surf->buffer;
+      if (!dri2_surf->color_buffers[i].native_buffer) {
+         dri2_surf->color_buffers[i].native_buffer = (void *)dri2_surf->buffer;
       }
-      if (dri2_surf->color_buffers[i].buffer == dri2_surf->buffer) {
+      if (dri2_surf->color_buffers[i].native_buffer == (void *)dri2_surf->buffer) {
          dri2_surf->back = &dri2_surf->color_buffers[i];
          updated = EGL_TRUE;
          break;
@@ -208,10 +208,10 @@ droid_window_dequeue_buffer(struct dri2_egl_surface *dri2_surf)
        * the color_buffers
        */
       for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
-         dri2_surf->color_buffers[i].buffer = NULL;
+         dri2_surf->color_buffers[i].native_buffer = NULL;
          dri2_surf->color_buffers[i].age = 0;
       }
-      dri2_surf->color_buffers[0].buffer = dri2_surf->buffer;
+      dri2_surf->color_buffers[0].native_buffer = (void *)dri2_surf->buffer;
       dri2_surf->back = &dri2_surf->color_buffers[0];
    }
 

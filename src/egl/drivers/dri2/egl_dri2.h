@@ -65,6 +65,15 @@ struct zwp_linux_dmabuf_v1;
 
 #endif /* HAVE_ANDROID_PLATFORM */
 
+#if defined(HAVE_WAYLAND_PLATFORM) || defined(HAVE_DRM_PLATFORM)
+#define COLOR_BUFFERS_SIZE 4
+#else
+       /* Usually Android uses at most triple buffers in ANativeWindow
+        * so hardcode the number of color_buffers to 3.
+        */
+#define COLOR_BUFFERS_SIZE 3
+#endif
+
 #include "eglconfig.h"
 #include "eglcontext.h"
 #include "egldisplay.h"
@@ -286,10 +295,12 @@ struct dri2_egl_surface
    /* EGL-owned buffers */
    __DRIbuffer           *local_buffers[__DRI_BUFFER_COUNT];
 
-#if defined(HAVE_WAYLAND_PLATFORM) || defined(HAVE_DRM_PLATFORM)
+   /* Used to record all the buffers created by each platform's native window
+    * and their ages.
+    */
    struct {
+      void *native_buffer; // aka wl_buffer/gbm_bo/ANativeWindowBuffer
 #ifdef HAVE_WAYLAND_PLATFORM
-      struct wl_buffer   *wl_buffer;
       __DRIimage         *dri_image;
       /* for is_different_gpu case. NULL else */
       __DRIimage         *linear_copy;
@@ -297,28 +308,15 @@ struct dri2_egl_surface
       void *data;
       int data_size;
 #endif
-#ifdef HAVE_DRM_PLATFORM
-      struct gbm_bo       *bo;
-#endif
       bool                locked;
       int                 age;
-   } color_buffers[4], *back, *current;
-#endif
+   } color_buffers[COLOR_BUFFERS_SIZE], *back, *current;
 
 #ifdef HAVE_ANDROID_PLATFORM
    struct ANativeWindow *window;
    struct ANativeWindowBuffer *buffer;
    __DRIimage *dri_image_back;
    __DRIimage *dri_image_front;
-
-   /* Used to record all the buffers created by ANativeWindow and their ages.
-    * Usually Android uses at most triple buffers in ANativeWindow
-    * so hardcode the number of color_buffers to 3.
-    */
-   struct {
-      struct ANativeWindowBuffer *buffer;
-      int age;
-   } color_buffers[3], *back;
 #endif
 
 #if defined(HAVE_SURFACELESS_PLATFORM)

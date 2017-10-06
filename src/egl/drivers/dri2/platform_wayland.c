@@ -77,7 +77,7 @@ wl_buffer_release(void *data, struct wl_buffer *buffer)
    int i;
 
    for (i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); ++i)
-      if (dri2_surf->color_buffers[i].wl_buffer == buffer)
+      if (dri2_surf->color_buffers[i].native_buffer == (void *)buffer)
          break;
 
    if (i == ARRAY_SIZE(dri2_surf->color_buffers)) {
@@ -267,8 +267,8 @@ dri2_wl_destroy_surface(_EGLDriver *drv, _EGLDisplay *disp, _EGLSurface *surf)
    dri2_dpy->core->destroyDrawable(dri2_surf->dri_drawable);
 
    for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
-      if (dri2_surf->color_buffers[i].wl_buffer)
-         wl_buffer_destroy(dri2_surf->color_buffers[i].wl_buffer);
+      if (dri2_surf->color_buffers[i].native_buffer)
+         wl_buffer_destroy((struct wl_buffer *)dri2_surf->color_buffers[i].native_buffer);
       if (dri2_surf->color_buffers[i].dri_image)
          dri2_dpy->image->destroyImage(dri2_surf->color_buffers[i].dri_image);
       if (dri2_surf->color_buffers[i].linear_copy)
@@ -309,9 +309,9 @@ dri2_wl_release_buffers(struct dri2_egl_surface *dri2_surf)
       dri2_egl_display(dri2_surf->base.Resource.Display);
 
    for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
-      if (dri2_surf->color_buffers[i].wl_buffer &&
+      if (dri2_surf->color_buffers[i].native_buffer &&
           !dri2_surf->color_buffers[i].locked)
-         wl_buffer_destroy(dri2_surf->color_buffers[i].wl_buffer);
+         wl_buffer_destroy((struct wl_buffer *)dri2_surf->color_buffers[i].native_buffer);
       if (dri2_surf->color_buffers[i].dri_image)
          dri2_dpy->image->destroyImage(dri2_surf->color_buffers[i].dri_image);
       if (dri2_surf->color_buffers[i].linear_copy)
@@ -320,7 +320,7 @@ dri2_wl_release_buffers(struct dri2_egl_surface *dri2_surf)
          munmap(dri2_surf->color_buffers[i].data,
                 dri2_surf->color_buffers[i].data_size);
 
-      dri2_surf->color_buffers[i].wl_buffer = NULL;
+      dri2_surf->color_buffers[i].native_buffer = NULL;
       dri2_surf->color_buffers[i].dri_image = NULL;
       dri2_surf->color_buffers[i].linear_copy = NULL;
       dri2_surf->color_buffers[i].data = NULL;
@@ -514,12 +514,12 @@ update_buffers(struct dri2_egl_surface *dri2_surf)
     * That means we can free any unlocked buffer now. */
    for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
       if (!dri2_surf->color_buffers[i].locked &&
-          dri2_surf->color_buffers[i].wl_buffer) {
-         wl_buffer_destroy(dri2_surf->color_buffers[i].wl_buffer);
+          dri2_surf->color_buffers[i].native_buffer) {
+         wl_buffer_destroy((struct wl_buffer *)dri2_surf->color_buffers[i].native_buffer);
          dri2_dpy->image->destroyImage(dri2_surf->color_buffers[i].dri_image);
          if (dri2_dpy->is_different_gpu)
             dri2_dpy->image->destroyImage(dri2_surf->color_buffers[i].linear_copy);
-         dri2_surf->color_buffers[i].wl_buffer = NULL;
+         dri2_surf->color_buffers[i].native_buffer = NULL;
          dri2_surf->color_buffers[i].dri_image = NULL;
          dri2_surf->color_buffers[i].linear_copy = NULL;
       }
@@ -848,7 +848,7 @@ dri2_wl_swap_buffers_with_damage(_EGLDriver *drv,
    dri2_surf->current = dri2_surf->back;
    dri2_surf->back = NULL;
 
-   if (!dri2_surf->current->wl_buffer) {
+   if (!dri2_surf->current->native_buffer) {
       __DRIimage *image;
 
       if (dri2_dpy->is_different_gpu)
@@ -856,15 +856,15 @@ dri2_wl_swap_buffers_with_damage(_EGLDriver *drv,
       else
          image = dri2_surf->current->dri_image;
 
-      dri2_surf->current->wl_buffer =
-         create_wl_buffer(dri2_dpy, dri2_surf, image);
+      dri2_surf->current->native_buffer =
+         (void *)create_wl_buffer(dri2_dpy, dri2_surf, image);
 
-      wl_buffer_add_listener(dri2_surf->current->wl_buffer,
+      wl_buffer_add_listener(dri2_surf->current->native_buffer,
                              &wl_buffer_listener, dri2_surf);
    }
 
    wl_surface_attach(dri2_surf->wl_surface_wrapper,
-                     dri2_surf->current->wl_buffer,
+                     (struct wl_buffer *)dri2_surf->current->native_buffer,
                      dri2_surf->dx, dri2_surf->dy);
 
    dri2_surf->wl_win->attached_width  = dri2_surf->base.Width;
@@ -1521,7 +1521,7 @@ static EGLBoolean
 dri2_wl_swrast_allocate_buffer(struct dri2_egl_surface *dri2_surf,
                                int format, int w, int h,
                                void **data, int *size,
-                               struct wl_buffer **buffer)
+                               void **buffer)
 {
    struct dri2_egl_display *dri2_dpy =
       dri2_egl_display(dri2_surf->base.Resource.Display);
@@ -1546,7 +1546,7 @@ dri2_wl_swrast_allocate_buffer(struct dri2_egl_surface *dri2_surf,
    /* Share it in a wl_buffer */
    pool = wl_shm_create_pool(dri2_dpy->wl_shm, fd, size_map);
    wl_proxy_set_queue((struct wl_proxy *)pool, dri2_surf->wl_queue);
-   *buffer = wl_shm_pool_create_buffer(pool, 0, w, h, stride, format);
+   *buffer = (void *)wl_shm_pool_create_buffer(pool, 0, w, h, stride, format);
    wl_shm_pool_destroy(pool);
    close(fd);
 
@@ -1585,7 +1585,7 @@ swrast_update_buffers(struct dri2_egl_surface *dri2_surf)
    /* try get free buffer already created */
    for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
       if (!dri2_surf->color_buffers[i].locked &&
-          dri2_surf->color_buffers[i].wl_buffer) {
+          dri2_surf->color_buffers[i].native_buffer) {
           dri2_surf->back = &dri2_surf->color_buffers[i];
           break;
       }
@@ -1602,11 +1602,11 @@ swrast_update_buffers(struct dri2_egl_surface *dri2_surf)
                                                  dri2_surf->base.Height,
                                                  &dri2_surf->back->data,
                                                  &dri2_surf->back->data_size,
-                                                 &dri2_surf->back->wl_buffer)) {
+                                                 &dri2_surf->back->native_buffer)) {
                 _eglError(EGL_BAD_ALLOC, "failed to allocate color buffer");
                  return -1;
              }
-             wl_buffer_add_listener(dri2_surf->back->wl_buffer,
+             wl_buffer_add_listener((struct wl_buffer *)dri2_surf->back->native_buffer,
                                     &wl_buffer_listener, dri2_surf);
              break;
          }
@@ -1625,11 +1625,11 @@ swrast_update_buffers(struct dri2_egl_surface *dri2_surf)
     * That means we can free any unlocked buffer now. */
    for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
       if (!dri2_surf->color_buffers[i].locked &&
-          dri2_surf->color_buffers[i].wl_buffer) {
-         wl_buffer_destroy(dri2_surf->color_buffers[i].wl_buffer);
+          dri2_surf->color_buffers[i].native_buffer) {
+         wl_buffer_destroy((struct wl_buffer *)dri2_surf->color_buffers[i].native_buffer);
          munmap(dri2_surf->color_buffers[i].data,
                 dri2_surf->color_buffers[i].data_size);
-         dri2_surf->color_buffers[i].wl_buffer = NULL;
+         dri2_surf->color_buffers[i].native_buffer = NULL;
          dri2_surf->color_buffers[i].data = NULL;
       }
    }
@@ -1675,7 +1675,7 @@ dri2_wl_swrast_commit_backbuffer(struct dri2_egl_surface *dri2_surf)
    dri2_surf->back = NULL;
 
    wl_surface_attach(dri2_surf->wl_surface_wrapper,
-                     dri2_surf->current->wl_buffer,
+                     (struct wl_buffer *)dri2_surf->current->native_buffer,
                      dri2_surf->dx, dri2_surf->dy);
 
    dri2_surf->wl_win->attached_width  = dri2_surf->base.Width;
