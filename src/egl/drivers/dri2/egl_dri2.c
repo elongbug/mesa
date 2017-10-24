@@ -1104,6 +1104,7 @@ dri2_surface_set_back_buffer(_EGLSurface *surf, void *buffer)
    for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
       if (!dri2_surf->color_buffers[i].native_buffer) {
          dri2_surf->color_buffers[i].native_buffer = buffer;
+         dri2_surf->color_buffers[i].age = 0;
       }
       if (dri2_surf->color_buffers[i].native_buffer == buffer) {
          dri2_surf->back = &dri2_surf->color_buffers[i];
