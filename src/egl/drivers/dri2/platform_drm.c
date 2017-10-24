@@ -53,7 +53,7 @@ lock_front_buffer(struct gbm_surface *_surf)
       return NULL;
    }
 
-   bo = dri2_surf->current->bo;
+   bo = dri2_surf->current->native_buffer;
 
    if (device->dri2) {
       dri2_surf->current->locked = true;
@@ -70,7 +70,7 @@ release_buffer(struct gbm_surface *_surf, struct gbm_bo *bo)
    struct dri2_egl_surface *dri2_surf = surf->dri_private;
 
    for (unsigned i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
-      if (dri2_surf->color_buffers[i].bo == bo) {
+      if (dri2_surf->color_buffers[i].native_buffer == bo) {
 	 dri2_surf->color_buffers[i].locked = false;
 	 break;
       }
@@ -172,8 +172,8 @@ dri2_drm_destroy_surface(_EGLDriver *drv, _EGLDisplay *disp, _EGLSurface *surf)
    dri2_dpy->core->destroyDrawable(dri2_surf->dri_drawable);
 
    for (unsigned i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
-      if (dri2_surf->color_buffers[i].bo)
-	 gbm_bo_destroy(dri2_surf->color_buffers[i].bo);
+      if (dri2_surf->color_buffers[i].native_buffer)
+	 gbm_bo_destroy(dri2_surf->color_buffers[i].native_buffer);
    }
 
    dri2_egl_surface_free_local_buffers(dri2_surf);
@@ -204,24 +204,28 @@ get_back_bo(struct dri2_egl_surface *dri2_surf)
 
    if (dri2_surf->back == NULL)
       return -1;
-   if (dri2_surf->back->bo == NULL) {
-      if (surf->base.modifiers)
-         dri2_surf->back->bo = gbm_bo_create_with_modifiers(&dri2_dpy->gbm_dri->base,
-                                                            surf->base.width,
-                                                            surf->base.height,
-                                                            surf->base.format,
-                                                            surf->base.modifiers,
-                                                            surf->base.count);
-      else
-         dri2_surf->back->bo = gbm_bo_create(&dri2_dpy->gbm_dri->base,
-                                             surf->base.width,
-                                             surf->base.height,
-                                             surf->base.format,
-                                             surf->base.flags);
+   if (dri2_surf->back->native_buffer == NULL) {
+      struct gbm_bo *bo;
 
+      if (surf->base.modifiers)
+         bo = gbm_bo_create_with_modifiers(&dri2_dpy->gbm_dri->base,
+                                           surf->base.width,
+                                           surf->base.height,
+                                           surf->base.format,
+                                           surf->base.modifiers,
+                                           surf->base.count);
+      else
+         bo = gbm_bo_create(&dri2_dpy->gbm_dri->base,
+                            surf->base.width,
+                            surf->base.height,
+                            surf->base.format,
+                            surf->base.flags);
+
+      if (bo == NULL)
+         return -1;
+
+      dri2_surf->back->native_buffer = bo;
    }
-   if (dri2_surf->back->bo == NULL)
-      return -1;
 
    return 0;
 }
@@ -238,11 +242,13 @@ get_swrast_front_bo(struct dri2_egl_surface *dri2_surf)
       dri2_surf->current = &dri2_surf->color_buffers[0];
    }
 
-   if (dri2_surf->current->bo == NULL)
-      dri2_surf->current->bo = gbm_bo_create(&dri2_dpy->gbm_dri->base,
-                                             surf->base.width, surf->base.height,
-                                             surf->base.format, surf->base.flags);
-   if (dri2_surf->current->bo == NULL)
+   if (dri2_surf->current->native_buffer == NULL)
+      dri2_surf->current->native_buffer = gbm_bo_create(&dri2_dpy->gbm_dri->base,
+                                                        surf->base.width,
+                                                        surf->base.height,
+                                                        surf->base.format,
+                                                        surf->base.flags);
+   if (dri2_surf->current->native_buffer == NULL)
       return -1;
 
    return 0;
@@ -256,7 +262,7 @@ back_bo_to_dri_buffer(struct dri2_egl_surface *dri2_surf, __DRIbuffer *buffer)
    struct gbm_dri_bo *bo;
    int name, pitch;
 
-   bo = (struct gbm_dri_bo *) dri2_surf->back->bo;
+   bo = dri2_surf->back->native_buffer;
 
    dri2_dpy->image->queryImage(bo->image, __DRI_IMAGE_ATTRIB_NAME, &name);
    dri2_dpy->image->queryImage(bo->image, __DRI_IMAGE_ATTRIB_STRIDE, &pitch);
@@ -360,7 +366,7 @@ dri2_drm_image_get_buffers(__DRIdrawable *driDrawable,
    if (get_back_bo(dri2_surf) < 0)
       return 0;
 
-   bo = (struct gbm_dri_bo *) dri2_surf->back->bo;
+   bo = dri2_surf->back->native_buffer;
    buffers->image_mask = __DRI_IMAGE_BUFFER_BACK;
    buffers->back = bo->image;
 
@@ -496,7 +502,7 @@ swrast_put_image2(__DRIdrawable *driDrawable,
    if (get_swrast_front_bo(dri2_surf) < 0)
       return;
 
-   bo = gbm_dri_bo(dri2_surf->current->bo);
+   bo = gbm_dri_bo(dri2_surf->current->native_buffer);
 
    bpp = gbm_bo_get_bpp(&bo->base);
    if (bpp == 0)
@@ -541,7 +547,7 @@ swrast_get_image(__DRIdrawable *driDrawable,
    if (get_swrast_front_bo(dri2_surf) < 0)
       return;
 
-   bo = gbm_dri_bo(dri2_surf->current->bo);
+   bo = gbm_dri_bo(dri2_surf->current->native_buffer);
 
    bpp = gbm_bo_get_bpp(&bo->base);
    if (bpp == 0)
