@@ -1154,6 +1154,18 @@ dri2_surface_destroy_back_image(_EGLSurface *surf)
    }
 }
 
+void
+dri2_surface_destroy_front_image(_EGLSurface *surf)
+{
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(surf->Resource.Display);
+   struct dri2_egl_surface *dri2_surf = dri2_egl_surface(surf);
+
+   if (dri2_surf->dri_image_front) {
+      dri2_dpy->image->destroyImage(dri2_surf->dri_image_front);
+      dri2_surf->dri_image_front = NULL;
+   }
+}
+
 /**
  * Called via eglTerminate(), drv->API.Terminate().
  *
