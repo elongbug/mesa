@@ -1126,6 +1126,22 @@ dri2_surface_set_back_buffer(_EGLSurface *surf, void *buffer)
    }
 }
 
+void
+dri2_surface_update_age(_EGLSurface *surf)
+{
+   struct dri2_egl_surface *dri2_surf = dri2_egl_surface(surf);
+   for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
+      if (dri2_surf->color_buffers[i].age > 0)
+         dri2_surf->color_buffers[i].age++;
+   }
+
+   /* "XXX: we don't use get_back_bo() since it causes regressions in
+    * several dEQP tests.
+    */
+   if (dri2_surf->back)
+      dri2_surf->back->age = 1;
+}
+
 /**
  * Called via eglTerminate(), drv->API.Terminate().
  *
