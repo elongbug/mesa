@@ -1153,6 +1153,39 @@ dri2_surface_free_image(_EGLSurface *surf, __DRIimage **img)
    }
 }
 
+int
+dri2_surface_get_front_image(_EGLSurface *surf, unsigned int format)
+{
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(surf->Resource.Display);
+   struct dri2_egl_surface *dri2_surf = dri2_egl_surface(surf);
+
+   if (dri2_surf->dri_image_front)
+      return 0;
+
+   if (surf->Type == EGL_WINDOW_BIT) {
+      /* According current EGL spec, front buffer rendering
+       * for window surface is not supported now.
+       * and mesa doesn't have the implementation of this case.
+       * Add warning message, but not treat it as error.
+       */
+      _eglLog(_EGL_DEBUG, "DRI driver requested unsupported front buffer for window surface");
+   } else if (surf->Type == EGL_PBUFFER_BIT) {
+      dri2_surf->dri_image_front =
+         dri2_dpy->image->createImage(dri2_dpy->dri_screen,
+                                      surf->Width,
+                                      surf->Height,
+                                      format,
+                                      0,
+                                      dri2_surf);
+      if (!dri2_surf->dri_image_front) {
+         _eglLog(_EGL_WARNING, "dri2_image_front allocation failed");
+         return -1;
+      }
+   }
+
+   return 0;
+}
+
 /**
  * Called via eglTerminate(), drv->API.Terminate().
  *
