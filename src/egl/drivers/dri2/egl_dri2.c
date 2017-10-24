@@ -1105,6 +1105,8 @@ dri2_surface_set_back_buffer(_EGLSurface *surf, void *buffer)
       if (!dri2_surf->color_buffers[i].native_buffer) {
          dri2_surf->color_buffers[i].native_buffer = buffer;
          dri2_surf->color_buffers[i].age = 0;
+         updated = EGL_TRUE;
+         break;
       }
       if (dri2_surf->color_buffers[i].native_buffer == buffer) {
          dri2_surf->back = &dri2_surf->color_buffers[i];
