@@ -268,10 +268,10 @@ dri2_wl_destroy_surface(_EGLDriver *drv, _EGLDisplay *disp, _EGLSurface *surf)
    for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
       if (dri2_surf->color_buffers[i].native_buffer)
          wl_buffer_destroy(dri2_surf->color_buffers[i].native_buffer);
-      if (dri2_surf->color_buffers[i].dri_image)
-         dri2_dpy->image->destroyImage(dri2_surf->color_buffers[i].dri_image);
-      if (dri2_surf->color_buffers[i].linear_copy)
-         dri2_dpy->image->destroyImage(dri2_surf->color_buffers[i].linear_copy);
+      dri2_surface_free_image(&dri2_surf->base,
+                              &dri2_surf->color_buffers[i].dri_image);
+      dri2_surface_free_image(&dri2_surf->base,
+                              &dri2_surf->color_buffers[i].linear_copy);
       if (dri2_surf->color_buffers[i].data)
          munmap(dri2_surf->color_buffers[i].data,
                 dri2_surf->color_buffers[i].data_size);
@@ -311,17 +311,15 @@ dri2_wl_release_buffers(struct dri2_egl_surface *dri2_surf)
       if (dri2_surf->color_buffers[i].native_buffer &&
           !dri2_surf->color_buffers[i].locked)
          wl_buffer_destroy(dri2_surf->color_buffers[i].native_buffer);
-      if (dri2_surf->color_buffers[i].dri_image)
-         dri2_dpy->image->destroyImage(dri2_surf->color_buffers[i].dri_image);
-      if (dri2_surf->color_buffers[i].linear_copy)
-         dri2_dpy->image->destroyImage(dri2_surf->color_buffers[i].linear_copy);
+      dri2_surface_free_image(&dri2_surf->base,
+                              &dri2_surf->color_buffers[i].dri_image);
+      dri2_surface_free_image(&dri2_surf->base,
+                              &dri2_surf->color_buffers[i].linear_copy);
       if (dri2_surf->color_buffers[i].data)
          munmap(dri2_surf->color_buffers[i].data,
                 dri2_surf->color_buffers[i].data_size);
 
       dri2_surf->color_buffers[i].native_buffer = NULL;
-      dri2_surf->color_buffers[i].dri_image = NULL;
-      dri2_surf->color_buffers[i].linear_copy = NULL;
       dri2_surf->color_buffers[i].data = NULL;
       dri2_surf->color_buffers[i].locked = false;
    }
@@ -515,12 +513,12 @@ update_buffers(struct dri2_egl_surface *dri2_surf)
       if (!dri2_surf->color_buffers[i].locked &&
           dri2_surf->color_buffers[i].native_buffer) {
          wl_buffer_destroy(dri2_surf->color_buffers[i].native_buffer);
-         dri2_dpy->image->destroyImage(dri2_surf->color_buffers[i].dri_image);
+         dri2_surface_free_image(&dri2_surf->base,
+                                 &dri2_surf->color_buffers[i].dri_image);
          if (dri2_dpy->is_different_gpu)
-            dri2_dpy->image->destroyImage(dri2_surf->color_buffers[i].linear_copy);
+            dri2_surface_free_image(&dri2_surf->base,
+                                    &dri2_surf->color_buffers[i].linear_copy);
          dri2_surf->color_buffers[i].native_buffer = NULL;
-         dri2_surf->color_buffers[i].dri_image = NULL;
-         dri2_surf->color_buffers[i].linear_copy = NULL;
       }
    }
 

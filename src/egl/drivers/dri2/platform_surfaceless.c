@@ -50,18 +50,6 @@ surfaceless_alloc_image(struct dri2_egl_display *dri2_dpy,
             NULL);
 }
 
-static void
-surfaceless_free_images(struct dri2_egl_surface *dri2_surf)
-{
-   struct dri2_egl_display *dri2_dpy =
-      dri2_egl_display(dri2_surf->base.Resource.Display);
-
-   if (dri2_surf->front) {
-      dri2_dpy->image->destroyImage(dri2_surf->front);
-      dri2_surf->front = NULL;
-   }
-}
-
 static int
 surfaceless_image_get_buffers(__DRIdrawable *driDrawable,
                         unsigned int format,
@@ -161,7 +149,7 @@ surfaceless_destroy_surface(_EGLDriver *drv, _EGLDisplay *disp, _EGLSurface *sur
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
    struct dri2_egl_surface *dri2_surf = dri2_egl_surface(surf);
 
-   surfaceless_free_images(dri2_surf);
+   dri2_surface_free_image(&dri2_surf->base, &dri2_surf->front);
 
    dri2_dpy->core->destroyDrawable(dri2_surf->dri_drawable);
 

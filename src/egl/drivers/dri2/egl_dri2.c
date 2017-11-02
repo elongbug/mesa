@@ -1142,6 +1142,17 @@ dri2_surface_update_age(_EGLSurface *surf)
       dri2_surf->back->age = 1;
 }
 
+void
+dri2_surface_free_image(_EGLSurface *surf, __DRIimage **img)
+{
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(surf->Resource.Display);
+
+   if (*img) {
+      dri2_dpy->image->destroyImage(*img);
+      *img = NULL;
+   }
+}
+
 /**
  * Called via eglTerminate(), drv->API.Terminate().
  *

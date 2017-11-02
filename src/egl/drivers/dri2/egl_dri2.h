@@ -460,6 +460,9 @@ dri2_surface_set_back_buffer(_EGLSurface *surf, void *buffer);
 void
 dri2_surface_update_age(_EGLSurface *surf);
 
+void
+dri2_surface_free_image(_EGLSurface *surf, __DRIimage **img);
+
 EGLBoolean
 dri2_init_surface(_EGLSurface *surf, _EGLDisplay *dpy, EGLint type,
         _EGLConfig *conf, const EGLint *attrib_list, EGLBoolean enable_out_fence);
